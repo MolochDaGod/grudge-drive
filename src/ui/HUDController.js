@@ -1,3 +1,5 @@
+import { characterManager } from '../game/CharacterManager.js';
+
 /**
  * HUDController — updates all DOM-based HUD elements each frame.
  */
@@ -14,6 +16,9 @@ export class HUDController {
     this._nitroFill = document.getElementById('nitroFill');
     this._killCount = document.getElementById('killCount');
     this._hudMessage = document.getElementById('hudMessage');
+    this._hudPortrait = document.getElementById('hudPortrait');
+    this._hudDriverName = document.getElementById('hudDriverName');
+    this._hudDriverId = document.getElementById('hudDriverId');
     this._ammoEls = [
       document.getElementById('ammo0'),
       document.getElementById('ammo1'),
@@ -26,6 +31,25 @@ export class HUDController {
     ];
 
     this._messageTimeout = null;
+    this._loadDriverInfo();
+  }
+
+  _loadDriverInfo() {
+    const char = characterManager.character;
+    if (!char) return;
+
+    // Portrait
+    if (this._hudPortrait) {
+      if (char.portraitDataUrl) {
+        this._hudPortrait.innerHTML = `<img src="${char.portraitDataUrl}" />`;
+      } else {
+        this._hudPortrait.innerHTML = `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#333;font-size:1.5rem">?</div>`;
+      }
+    }
+
+    // Name + ID
+    if (this._hudDriverName) this._hudDriverName.textContent = char.name;
+    if (this._hudDriverId) this._hudDriverId.textContent = char.grudgeId?.slice(0, 8) + '...';
   }
 
   update() {

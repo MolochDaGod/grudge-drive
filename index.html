@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>GRUDGE DRIVE - Vehicular Combat</title>
   <link href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@400;700;900&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <script src="https://js.puter.com/v2/"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0a0c; font-family: 'Inter', sans-serif; }
@@ -182,6 +183,112 @@
       letter-spacing: 0.15em;
     }
     #gameOver .stats { color: #888; margin: 20px 0 40px; font-size: 0.9rem; }
+    .menu-btn:disabled { opacity: 0.35; cursor: default; transform: none !important; }
+
+    /* Menu character info */
+    #menuCharInfo { display: none; margin-bottom: 24px; text-align: center; }
+    #menuCharInfo.active { display: block; }
+    #menuCharInfo .char-name { color: #c9952a; font-family: 'Cinzel Decorative', serif; font-size: 1.2rem; font-weight: 700; }
+    #menuCharInfo .char-detail { color: #666; font-size: 0.75rem; letter-spacing: 0.15em; margin-top: 4px; }
+    #menuCharPortrait { width: 64px; height: 64px; border-radius: 50%; border: 2px solid #c9952a40; margin: 0 auto 8px; overflow: hidden; background: #1a1a1f; }
+    #menuCharPortrait img { width: 100%; height: 100%; object-fit: cover; }
+
+    /* HUD driver frame */
+    .hud-driver { position: absolute; top: 20px; left: 20px; display: flex; align-items: center; gap: 10px; }
+    .hud-driver-portrait { width: 48px; height: 48px; border-radius: 50%; border: 2px solid #c9952a; overflow: hidden; background: #1a1a1f; flex-shrink: 0; }
+    .hud-driver-portrait img { width: 100%; height: 100%; object-fit: cover; }
+    .hud-driver-info .driver-name { color: #c9952a; font-family: 'Cinzel Decorative', serif; font-size: 0.85rem; font-weight: 700; }
+    .hud-driver-info .driver-id { color: #444; font-size: 0.55rem; letter-spacing: 0.1em; font-family: monospace; }
+
+    /* ── Character Creation Overlay ── */
+    #characterCreation {
+      position: fixed; inset: 0; z-index: 60;
+      background: radial-gradient(ellipse at 50% 20%, rgba(20,14,30,0.97) 0%, rgba(10,10,12,0.99) 100%);
+      display: none; flex-direction: column; align-items: center; justify-content: center;
+      font-family: 'Inter', sans-serif;
+    }
+    #characterCreation.active { display: flex; }
+
+    .cc-dots { display: flex; gap: 10px; margin-bottom: 24px; }
+    .cc-dot { width: 10px; height: 10px; border-radius: 50%; background: #222; border: 1px solid #444; transition: all 0.3s; }
+    .cc-dot.active { background: #c9952a; border-color: #c9952a; box-shadow: 0 0 8px rgba(201,149,42,0.5); }
+    .cc-dot.done { background: #5a4a1a; border-color: #8b6914; }
+
+    .cc-body { width: 100%; max-width: 640px; padding: 0 24px; text-align: center; }
+    .cc-title {
+      font-family: 'Cinzel Decorative', serif; font-size: 1.8rem; font-weight: 900;
+      background: linear-gradient(135deg, #c9952a 0%, #f5d77a 40%, #c9952a 60%, #8b6914 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      letter-spacing: 0.1em; margin-bottom: 6px;
+    }
+    .cc-subtitle { color: #666; font-size: 0.8rem; letter-spacing: 0.15em; margin-bottom: 28px; }
+    .cc-hint { color: #555; font-size: 0.7rem; margin-top: 8px; transition: color 0.2s; }
+
+    .cc-input {
+      width: 100%; max-width: 340px; padding: 14px 20px; font-size: 1.1rem;
+      background: rgba(20,20,25,0.9); border: 1px solid #c9952a40; color: #c9952a;
+      font-family: 'Cinzel Decorative', serif; text-align: center; letter-spacing: 0.08em;
+      outline: none; transition: border-color 0.3s;
+    }
+    .cc-input:focus { border-color: #c9952a; box-shadow: 0 0 15px rgba(201,149,42,0.15); }
+    .cc-input::placeholder { color: #444; }
+
+    .cc-nav { display: flex; justify-content: space-between; align-items: center; margin-top: 32px; }
+    .cc-btn { font-size: 0.9rem !important; padding: 12px 36px !important; }
+    .cc-btn.cc-back { opacity: 0.7; }
+    .cc-btn.cc-back:hover { opacity: 1; }
+    .cc-btn.cc-primary { background: linear-gradient(135deg, rgba(201,149,42,0.3) 0%, rgba(201,149,42,0.1) 100%) !important; border-color: #c9952a !important; }
+    .cc-btn.cc-sm { font-size: 0.8rem !important; padding: 10px 24px !important; }
+    .cc-btn.cc-ghost { border-color: #333 !important; color: #666 !important; }
+
+    /* Card grid */
+    .cc-grid { display: grid; gap: 12px; margin-bottom: 8px; }
+    .cc-grid-6 { grid-template-columns: repeat(3, 1fr); }
+    .cc-grid-4 { grid-template-columns: repeat(2, 1fr); }
+    .cc-card {
+      padding: 16px 12px; border: 1px solid #2a2a30; background: rgba(15,15,20,0.8);
+      cursor: pointer; transition: all 0.25s; text-align: center; position: relative;
+    }
+    .cc-card:hover { border-color: #555; background: rgba(25,25,35,0.9); }
+    .cc-card.selected { border-color: var(--accent, #c9952a); box-shadow: 0 0 20px rgba(201,149,42,0.2); background: rgba(201,149,42,0.06); }
+    .cc-card-icon { font-size: 1.8rem; margin-bottom: 6px; }
+    .cc-card-name { color: #c9952a; font-family: 'Cinzel Decorative', serif; font-size: 0.9rem; font-weight: 700; margin-bottom: 4px; }
+    .cc-card-trait { color: #666; font-size: 0.65rem; letter-spacing: 0.05em; line-height: 1.4; }
+    .cc-card-swatch { width: 24px; height: 4px; border-radius: 2px; margin: 8px auto 0; }
+
+    /* Portrait step */
+    .cc-portrait-frame {
+      width: 200px; height: 200px; margin: 0 auto 16px; border: 2px solid #c9952a30;
+      background: rgba(15,15,20,0.9); position: relative; overflow: hidden;
+    }
+    .cc-portrait-img { width: 100%; height: 100%; object-fit: cover; }
+    .cc-portrait-placeholder {
+      width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;
+      font-size: 4rem; color: #2a2a30; font-family: 'Cinzel Decorative', serif;
+    }
+    .cc-portrait-spinner {
+      position: absolute; inset: 0; display: none; flex-direction: column;
+      align-items: center; justify-content: center; background: rgba(10,10,12,0.85);
+    }
+    .cc-portrait-spinner.active { display: flex; }
+    .cc-portrait-spinner span { color: #c9952a; font-size: 0.7rem; margin-top: 12px; letter-spacing: 0.1em; }
+    .cc-spin-ring {
+      width: 32px; height: 32px; border: 3px solid #2a2a30; border-top-color: #c9952a;
+      border-radius: 50%; animation: ccSpin 0.8s linear infinite;
+    }
+    @keyframes ccSpin { to { transform: rotate(360deg); } }
+    .cc-portrait-actions { display: flex; gap: 10px; justify-content: center; margin-bottom: 8px; }
+
+    /* Confirm summary */
+    .cc-summary { display: flex; gap: 24px; align-items: center; justify-content: center; margin-bottom: 16px; }
+    .cc-summary-portrait { width: 120px; height: 120px; border: 2px solid #c9952a40; overflow: hidden; flex-shrink: 0; background: #1a1a1f; }
+    .cc-summary-portrait img { width: 100%; height: 100%; object-fit: cover; }
+    .cc-summary-info { text-align: left; }
+    .cc-summary-name { color: #c9952a; font-family: 'Cinzel Decorative', serif; font-size: 1.4rem; font-weight: 900; margin-bottom: 10px; }
+    .cc-summary-row { margin-bottom: 6px; }
+    .cc-label { color: #555; font-size: 0.65rem; letter-spacing: 0.15em; text-transform: uppercase; margin-right: 8px; }
+    .cc-value { color: #aaa; font-size: 0.85rem; }
+    .cc-uuid { font-family: monospace; font-size: 0.65rem; color: #444; }
   </style>
 </head>
 <body>
@@ -193,11 +300,24 @@
     <div class="load-text" id="loadText">Initializing engine...</div>
   </div>
 
+  <!-- Character Creation -->
+  <div id="characterCreation">
+    <div class="cc-dots"></div>
+    <div class="cc-body"></div>
+  </div>
+
   <!-- Main Menu -->
   <div id="mainMenu" class="hidden">
     <h1>GRUDGE DRIVE</h1>
     <div class="tagline">by Racalvin The Pirate King</div>
+    <div id="menuCharInfo">
+      <div id="menuCharPortrait"></div>
+      <div class="char-name" id="menuCharName"></div>
+      <div class="char-detail" id="menuCharDetail"></div>
+    </div>
     <button class="menu-btn" id="btnPlay">Enter Arena</button>
+    <button class="menu-btn" id="btnCreate">Create Driver</button>
+    <button class="menu-btn" id="btnChange" style="display:none">Change Driver</button>
     <button class="menu-btn" id="btnControls">Controls</button>
     <div class="credit">GRUDGE STUDIO &mdash; <span>Racalvin The Pirate King</span></div>
   </div>
@@ -230,9 +350,16 @@
         <span class="ammo" id="ammo2">3</span>
       </div>
     </div>
-    <div class="hud-kills">
-      <div class="count" id="killCount">0</div>
-      <div class="label">ELIMINATIONS</div>
+    <div class="hud-driver">
+      <div class="hud-driver-portrait" id="hudPortrait"></div>
+      <div class="hud-driver-info">
+        <div class="driver-name" id="hudDriverName"></div>
+        <div class="driver-id" id="hudDriverId"></div>
+        <div style="margin-top:4px">
+          <span class="count" id="killCount" style="font-size:1.4rem;font-weight:900;color:#c9952a;font-family:'Cinzel Decorative',serif">0</span>
+          <span class="label" style="font-size:0.55rem;color:#666;letter-spacing:0.15em;margin-left:4px">KILLS</span>
+        </div>
+      </div>
     </div>
     <div class="hud-message" id="hudMessage"></div>
   </div>

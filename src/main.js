@@ -7,6 +7,8 @@ import { WeaponsSystem } from './game/WeaponsSystem.js';
 import { AIManager } from './game/AIManager.js';
 import { HUDController } from './ui/HUDController.js';
 import { AudioManager } from './game/AudioManager.js';
+import { characterManager, RACES } from './game/CharacterManager.js';
+import { CharacterCreation } from './ui/CharacterCreation.js';
 
 // DOM refs
 const canvas = document.getElementById('renderCanvas');
@@ -19,12 +21,64 @@ const gameOverScreen = document.getElementById('gameOver');
 
 let engine, scene, havokInstance;
 let player, weapons, aiManager, hudCtrl, audio;
-let gameState = 'loading'; // loading | menu | playing | dead
+let charCreation;
+let gameState = 'loading'; // loading | menu | creating | playing | dead
 
 // --- Loading ---
 function updateLoad(pct, text) {
   loadBar.style.width = `${pct}%`;
   loadText.textContent = text;
+}
+
+// --- Menu UI sync ---
+function updateMenuForCharacter() {
+  const btnPlay = document.getElementById('btnPlay');
+  const btnCreate = document.getElementById('btnCreate');
+  const btnChange = document.getElementById('btnChange');
+  const charInfo = document.getElementById('menuCharInfo');
+  const charName = document.getElementById('menuCharName');
+  const charDetail = document.getElementById('menuCharDetail');
+  const charPortrait = document.getElementById('menuCharPortrait');
+
+  if (characterManager.hasCharacter) {
+    const c = characterManager.character;
+    const race = characterManager.getRace();
+    const cls = characterManager.getClass();
+
+    btnPlay.style.display = '';
+    btnCreate.style.display = 'none';
+    btnChange.style.display = '';
+    charInfo.classList.add('active');
+    charName.textContent = c.name;
+    charDetail.textContent = `${race.name} ${cls.name} • ${c.grudgeId.slice(0, 8)}`;
+
+    if (c.portraitDataUrl) {
+      charPortrait.innerHTML = `<img src="${c.portraitDataUrl}" />`;
+    } else {
+      charPortrait.innerHTML = `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#444;font-size:2rem">?</div>`;
+    }
+  } else {
+    btnPlay.style.display = 'none';
+    btnCreate.style.display = '';
+    btnChange.style.display = 'none';
+    charInfo.classList.remove('active');
+  }
+}
+
+function applyCharacterToGame() {
+  if (!characterManager.hasCharacter) return;
+  const c = characterManager.character;
+  player.setCharacterColors(c.raceId, c.classId);
+}
+
+async function openCharacterCreation() {
+  mainMenu.classList.add('hidden');
+  gameState = 'creating';
+  const char = await charCreation.show();
+  applyCharacterToGame();
+  updateMenuForCharacter();
+  mainMenu.classList.remove('hidden');
+  gameState = 'menu';
 }
 
 async function init() {
@@ -42,30 +96,30 @@ async function init() {
   scene.collisionsEnabled = true;
   scene.clearColor.set(0.04, 0.04, 0.05, 1);
 
-  // Build the arena environment
   await createArena(scene);
   updateLoad(50, 'Loading vehicles...');
 
-  // Audio
   audio = new AudioManager(scene);
-
-  // Player car
   player = new CarController(scene, audio);
   await player.init();
   updateLoad(70, 'Spawning opponents...');
 
-  // Weapons
   weapons = new WeaponsSystem(scene, player, audio);
-
-  // AI opponents
   aiManager = new AIManager(scene, player, weapons, audio);
   await aiManager.spawnBots(5);
-  updateLoad(85, 'Preparing HUD...');
+  updateLoad(85, 'Checking identity...');
 
-  // HUD
+  // Character creation UI
+  charCreation = new CharacterCreation();
+
+  // Try loading saved character from Puter KV
+  await characterManager.load();
+  if (characterManager.hasCharacter) {
+    applyCharacterToGame();
+  }
+
+  // HUD (reads character data in constructor)
   hudCtrl = new HUDController(player, weapons);
-
-  // Wire AI kill → HUD
   aiManager.onBotKilled(() => hudCtrl.addKill());
 
   updateLoad(100, 'Ready!');
@@ -74,6 +128,7 @@ async function init() {
   // Transition to menu
   loadingScreen.classList.add('hidden');
   mainMenu.classList.remove('hidden');
+  updateMenuForCharacter();
   gameState = 'menu';
 
   // Render loop
@@ -98,10 +153,17 @@ async function init() {
 
 // --- Menu ---
 document.getElementById('btnPlay').addEventListener('click', () => {
+  if (!characterManager.hasCharacter) return;
   mainMenu.classList.add('hidden');
   hud.classList.add('active');
   canvas.focus();
   startGame();
+});
+
+document.getElementById('btnCreate').addEventListener('click', () => openCharacterCreation());
+document.getElementById('btnChange').addEventListener('click', async () => {
+  await characterManager.clear();
+  openCharacterCreation();
 });
 
 document.getElementById('btnControls').addEventListener('click', () => {
@@ -114,6 +176,7 @@ function startGame() {
   weapons.reset();
   aiManager.reset();
   hudCtrl.reset();
+  hudCtrl._loadDriverInfo(); // refresh HUD portrait
   canvas.requestPointerLock?.();
 }
 
@@ -135,6 +198,7 @@ document.getElementById('btnRestart').addEventListener('click', () => {
 document.getElementById('btnQuit').addEventListener('click', () => {
   gameOverScreen.classList.remove('active');
   mainMenu.classList.remove('hidden');
+  updateMenuForCharacter();
   gameState = 'menu';
 });
 

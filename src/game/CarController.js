@@ -3,6 +3,7 @@ import {
   PhysicsAggregate, PhysicsShapeType, FollowCamera, Texture,
   SceneLoader, TransformNode, ParticleSystem
 } from '@babylonjs/core';
+import { RACES, CLASSES } from './CharacterManager.js';
 
 const CAR_CONFIG = {
   maxSpeed: 40,
@@ -137,6 +138,38 @@ export class CarController {
 
     // Tag car for collision detection
     this.root.metadata = { type: 'player' };
+  }
+
+  /** Apply race/class colors to the car body, exhaust, and gun mount. */
+  setCharacterColors(raceId, classId) {
+    const race = RACES.find(r => r.id === raceId) || RACES[0];
+    const cls = CLASSES.find(c => c.id === classId) || CLASSES[0];
+
+    // Body color from race
+    if (this.body?.material) {
+      this.body.material.diffuseColor = new Color3(race.color.r, race.color.g, race.color.b);
+      this.body.material.emissiveColor = new Color3(race.emissive.r, race.emissive.g, race.emissive.b);
+      this.body.material.specularColor = new Color3(race.color.r * 0.5, race.color.g * 0.5, race.color.b * 0.5);
+    }
+
+    // Exhaust glow from class secondary color
+    const exhaustMeshes = this.root?.getChildMeshes()?.filter(m => m.name.startsWith('exhaust'));
+    if (exhaustMeshes) {
+      exhaustMeshes.forEach(ex => {
+        if (ex.material) {
+          ex.material.emissiveColor = new Color3(cls.secondaryColor.r, cls.secondaryColor.g, cls.secondaryColor.b);
+        }
+      });
+    }
+
+    // Gun mount tint from class
+    if (this.gunMount?.material) {
+      this.gunMount.material.diffuseColor = new Color3(
+        0.25 + cls.secondaryColor.r * 0.15,
+        0.25 + cls.secondaryColor.g * 0.15,
+        0.25 + cls.secondaryColor.b * 0.15
+      );
+    }
   }
 
   _setupInput() {
