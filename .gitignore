@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Python venv
+.venv/
+
+# Editor / tool history
+.history/
+.claude/
+.codex/
+.sixth/
+.vscode/
+
+# Raw source assets (top-level only, not public/assets/*)
+/meshes/
+/textures/
+/audio/
+/sprites/
+/materials/
+/prefabs/
+/text/
+
+# Design doc (large, not needed for deploy)
+DESIGN.md
+asset_summary.json
+AGENTS.md
+CLAUDE.md
+
+# OS
+Thumbs.db
+.DS_Store

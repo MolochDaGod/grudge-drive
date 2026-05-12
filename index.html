@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GRUDGE DRIVE - Vehicular Combat</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@400;700;900&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0a0c; font-family: 'Inter', sans-serif; }
+    canvas#renderCanvas { width: 100%; height: 100%; display: block; outline: none; touch-action: none; }
+
+    /* Loading Screen */
+    #loadingScreen {
+      position: fixed; inset: 0; z-index: 100;
+      background: radial-gradient(circle at 50% 30%, #1a1420 0%, #0a0a0c 100%);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      transition: opacity 0.6s ease;
+    }
+    #loadingScreen.hidden { opacity: 0; pointer-events: none; }
+    #loadingScreen h1 {
+      font-family: 'Cinzel Decorative', serif;
+      font-size: 4rem; font-weight: 900; text-transform: uppercase;
+      background: linear-gradient(135deg, #c9952a 0%, #f5d77a 40%, #c9952a 60%, #8b6914 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      text-shadow: none; filter: drop-shadow(0 0 30px rgba(201,149,42,0.4));
+      letter-spacing: 0.15em;
+    }
+    #loadingScreen .subtitle {
+      font-family: 'Inter', sans-serif; font-size: 0.9rem; color: #666;
+      letter-spacing: 0.3em; text-transform: uppercase; margin-top: 8px;
+    }
+    #loadingScreen .bar-container {
+      width: 300px; height: 4px; background: #1a1a1f; border-radius: 2px;
+      margin-top: 40px; overflow: hidden;
+    }
+    #loadingScreen .bar-fill {
+      height: 100%; width: 0%; border-radius: 2px;
+      background: linear-gradient(90deg, #c9952a, #f5d77a);
+      transition: width 0.3s ease;
+    }
+    #loadingScreen .load-text {
+      color: #555; font-size: 0.75rem; margin-top: 12px; letter-spacing: 0.1em;
+    }
+
+    /* Main Menu Overlay */
+    #mainMenu {
+      position: fixed; inset: 0; z-index: 50;
+      background: radial-gradient(ellipse at 50% 0%, rgba(30,20,40,0.95) 0%, rgba(10,10,12,0.98) 100%);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      transition: opacity 0.5s ease;
+    }
+    #mainMenu.hidden { opacity: 0; pointer-events: none; }
+    #mainMenu h1 {
+      font-family: 'Cinzel Decorative', serif;
+      font-size: 5rem; font-weight: 900; text-transform: uppercase;
+      background: linear-gradient(135deg, #c9952a 0%, #f5d77a 40%, #c9952a 60%, #8b6914 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      filter: drop-shadow(0 4px 20px rgba(201,149,42,0.5));
+      letter-spacing: 0.12em; margin-bottom: 4px;
+    }
+    #mainMenu .tagline {
+      font-family: 'Inter', sans-serif; color: #8b6914; font-size: 0.85rem;
+      letter-spacing: 0.4em; text-transform: uppercase; margin-bottom: 60px;
+    }
+    .menu-btn {
+      font-family: 'Cinzel Decorative', serif; font-size: 1.1rem; font-weight: 700;
+      padding: 16px 60px; margin: 8px 0; border: 1px solid #c9952a40;
+      background: linear-gradient(135deg, rgba(201,149,42,0.15) 0%, rgba(201,149,42,0.05) 100%);
+      color: #c9952a; cursor: pointer; letter-spacing: 0.15em; text-transform: uppercase;
+      transition: all 0.3s ease; position: relative; overflow: hidden;
+    }
+    .menu-btn:hover {
+      background: linear-gradient(135deg, rgba(201,149,42,0.3) 0%, rgba(201,149,42,0.1) 100%);
+      border-color: #c9952a; box-shadow: 0 0 30px rgba(201,149,42,0.2);
+      transform: scale(1.02);
+    }
+    .menu-btn::before {
+      content: ''; position: absolute; top: 0; left: -100%; width: 100%; height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(201,149,42,0.1), transparent);
+      transition: left 0.5s ease;
+    }
+    .menu-btn:hover::before { left: 100%; }
+    #mainMenu .credit {
+      position: absolute; bottom: 20px; color: #333; font-size: 0.7rem; letter-spacing: 0.2em;
+    }
+    #mainMenu .credit span { color: #c9952a; }
+
+    /* HUD */
+    #hud {
+      position: fixed; inset: 0; z-index: 10; pointer-events: none;
+      display: none; font-family: 'Inter', sans-serif;
+    }
+    #hud.active { display: block; }
+
+    .hud-speed {
+      position: absolute; bottom: 30px; right: 30px;
+      text-align: center;
+    }
+    .hud-speed .value {
+      font-family: 'Cinzel Decorative', serif; font-size: 3.5rem; font-weight: 900;
+      color: #c9952a; line-height: 1;
+      text-shadow: 0 0 20px rgba(201,149,42,0.4);
+    }
+    .hud-speed .unit { color: #666; font-size: 0.7rem; letter-spacing: 0.3em; }
+
+    .hud-health {
+      position: absolute; bottom: 30px; left: 30px;
+    }
+    .hud-health .label { color: #555; font-size: 0.65rem; letter-spacing: 0.2em; margin-bottom: 4px; }
+    .hud-health .bar {
+      width: 200px; height: 6px; background: #1a1a1f; border-radius: 3px; overflow: hidden;
+      border: 1px solid #333;
+    }
+    .hud-health .fill {
+      height: 100%; background: linear-gradient(90deg, #8b1a1a, #cc3333); border-radius: 3px;
+      transition: width 0.3s ease;
+    }
+
+    .hud-nitro {
+      position: absolute; bottom: 80px; left: 30px;
+    }
+    .hud-nitro .label { color: #555; font-size: 0.65rem; letter-spacing: 0.2em; margin-bottom: 4px; }
+    .hud-nitro .bar {
+      width: 200px; height: 6px; background: #1a1a1f; border-radius: 3px; overflow: hidden;
+      border: 1px solid #333;
+    }
+    .hud-nitro .fill {
+      height: 100%; background: linear-gradient(90deg, #2a5c8b, #4a9cd4); border-radius: 3px;
+      transition: width 0.3s ease;
+    }
+
+    .hud-weapons {
+      position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+      display: flex; gap: 8px;
+    }
+    .weapon-slot {
+      width: 56px; height: 56px; border: 1px solid #c9952a30;
+      background: rgba(10,10,12,0.8); display: flex; align-items: center; justify-content: center;
+      position: relative; backdrop-filter: blur(4px);
+    }
+    .weapon-slot.active { border-color: #c9952a; box-shadow: 0 0 15px rgba(201,149,42,0.3); }
+    .weapon-slot img { width: 32px; height: 32px; filter: brightness(0.8); }
+    .weapon-slot .ammo {
+      position: absolute; bottom: 2px; right: 4px;
+      font-size: 0.6rem; color: #c9952a; font-weight: 700;
+    }
+
+    .hud-minimap {
+      position: absolute; top: 20px; right: 20px;
+      width: 150px; height: 150px; border: 1px solid #c9952a30;
+      background: rgba(10,10,12,0.7); backdrop-filter: blur(4px);
+    }
+    .hud-minimap canvas { width: 100%; height: 100%; }
+
+    .hud-kills {
+      position: absolute; top: 20px; left: 20px;
+      color: #c9952a; font-family: 'Cinzel Decorative', serif;
+    }
+    .hud-kills .count { font-size: 2rem; font-weight: 900; }
+    .hud-kills .label { font-size: 0.6rem; color: #666; letter-spacing: 0.2em; font-family: 'Inter', sans-serif; }
+
+    .hud-message {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      font-family: 'Cinzel Decorative', serif; font-size: 2rem; color: #c9952a;
+      text-shadow: 0 0 30px rgba(201,149,42,0.5);
+      opacity: 0; transition: opacity 0.3s ease;
+      pointer-events: none;
+    }
+    .hud-message.show { opacity: 1; }
+
+    /* Pause/Death overlay */
+    #gameOver {
+      position: fixed; inset: 0; z-index: 40;
+      background: rgba(10,5,5,0.9);
+      display: none; flex-direction: column; align-items: center; justify-content: center;
+    }
+    #gameOver.active { display: flex; }
+    #gameOver h2 {
+      font-family: 'Cinzel Decorative', serif; font-size: 3rem;
+      color: #cc3333; text-shadow: 0 0 40px rgba(200,0,0,0.5);
+      letter-spacing: 0.15em;
+    }
+    #gameOver .stats { color: #888; margin: 20px 0 40px; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <!-- Loading Screen -->
+  <div id="loadingScreen">
+    <h1>GRUDGE DRIVE</h1>
+    <div class="subtitle">Vehicular Combat</div>
+    <div class="bar-container"><div class="bar-fill" id="loadBar"></div></div>
+    <div class="load-text" id="loadText">Initializing engine...</div>
+  </div>
+
+  <!-- Main Menu -->
+  <div id="mainMenu" class="hidden">
+    <h1>GRUDGE DRIVE</h1>
+    <div class="tagline">by Racalvin The Pirate King</div>
+    <button class="menu-btn" id="btnPlay">Enter Arena</button>
+    <button class="menu-btn" id="btnControls">Controls</button>
+    <div class="credit">GRUDGE STUDIO &mdash; <span>Racalvin The Pirate King</span></div>
+  </div>
+
+  <!-- HUD -->
+  <div id="hud">
+    <div class="hud-speed">
+      <div class="value" id="speedValue">0</div>
+      <div class="unit">KM/H</div>
+    </div>
+    <div class="hud-health">
+      <div class="label">HULL INTEGRITY</div>
+      <div class="bar"><div class="fill" id="healthFill" style="width:100%"></div></div>
+    </div>
+    <div class="hud-nitro">
+      <div class="label">NITRO</div>
+      <div class="bar"><div class="fill" id="nitroFill" style="width:100%"></div></div>
+    </div>
+    <div class="hud-weapons">
+      <div class="weapon-slot active" id="wSlot0">
+        <img src="assets/sprites/gun.png" alt="gun" />
+        <span class="ammo" id="ammo0">∞</span>
+      </div>
+      <div class="weapon-slot" id="wSlot1">
+        <img src="assets/sprites/rocket.png" alt="rocket" />
+        <span class="ammo" id="ammo1">5</span>
+      </div>
+      <div class="weapon-slot" id="wSlot2">
+        <img src="assets/sprites/bombSprite.png" alt="bomb" />
+        <span class="ammo" id="ammo2">3</span>
+      </div>
+    </div>
+    <div class="hud-kills">
+      <div class="count" id="killCount">0</div>
+      <div class="label">ELIMINATIONS</div>
+    </div>
+    <div class="hud-message" id="hudMessage"></div>
+  </div>
+
+  <!-- Game Over -->
+  <div id="gameOver">
+    <h2>WRECKED</h2>
+    <div class="stats" id="goStats"></div>
+    <button class="menu-btn" id="btnRestart">Fight Again</button>
+    <button class="menu-btn" id="btnQuit">Main Menu</button>
+  </div>
+
+  <canvas id="renderCanvas"></canvas>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
