@@ -82,7 +82,8 @@ export class WeaponsSystem {
     const mesh = MeshBuilder.CreateSphere(`proj_${Date.now()}`, { diameter: size }, this.scene);
     mesh.position = pos.add(dir.scale(3));
     mesh.material = this._materials[w.name];
-    mesh.metadata = { type: 'projectile', damage: w.damage, owner: 'player' };
+    const dmgMult = this._upgrades?.damageMult ?? 1;
+    mesh.metadata = { type: 'projectile', damage: w.damage * dmgMult, owner: 'player' };
 
     const proj = {
       mesh,
@@ -187,10 +188,17 @@ export class WeaponsSystem {
     return 0;
   }
 
+  /** Apply shop upgrade multipliers. */
+  applyUpgrades(stats) {
+    if (!stats) return;
+    this._upgrades = stats;
+  }
+
   reset() {
     this.projectiles.forEach(p => p.mesh.dispose());
     this.projectiles = [];
-    this.ammo = WEAPONS.map(w => w.ammo);
+    const ammoMult = this._upgrades?.ammoMult ?? 1;
+    this.ammo = WEAPONS.map(w => w.ammo === Infinity ? Infinity : Math.round(w.ammo * ammoMult));
     this.currentIndex = 0;
     this.cooldown = 0;
   }

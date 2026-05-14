@@ -1,4 +1,5 @@
 import { characterManager } from '../game/CharacterManager.js';
+import { shopState, COINS_PER_KILL } from './CarShop.js';
 
 /**
  * HUDController — updates all DOM-based HUD elements each frame.
@@ -99,7 +100,8 @@ export class HUDController {
 
   addKill() {
     this.kills++;
-    this.showMessage('ELIMINATED!');
+    shopState.addCoins(COINS_PER_KILL);
+    this.showMessage(`ELIMINATED! +${COINS_PER_KILL} 🪙`);
   }
 
   showMessage(text, duration = 1.5) {

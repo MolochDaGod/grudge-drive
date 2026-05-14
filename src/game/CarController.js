@@ -316,8 +316,9 @@ export class CarController {
     this._applyAntiRoll(body, worldMat, up, compressions, 2, 3, dt);
 
     // ── Drive force (rear wheels) ──
+    const uAccel = this._upgrades?.accelMult ?? 1;
     if (grounded && throttle !== 0) {
-      const engineN = CAR.engineForce * throttle * nitroMult;
+      const engineN = CAR.engineForce * throttle * nitroMult * uAccel;
       // Apply on rear axle contact patches
       for (let i = 2; i <= 3; i++) {
         const worldPt = Vector3.TransformCoordinates(WHEEL_OFFSETS[i], worldMat);
@@ -353,7 +354,9 @@ export class CarController {
     }
 
     // ── Speed cap ──
-    const maxV = CAR.maxSpeed * nitroMult;
+    const uSpeed = this._upgrades?.speedMult ?? 1;
+    const uNitroBoost = this._upgrades?.nitroBoost ?? 1;
+    const maxV = CAR.maxSpeed * nitroMult * uSpeed;
     if (speed > maxV) {
       body.setLinearVelocity(vel.normalize().scale(maxV));
     }
@@ -409,6 +412,12 @@ export class CarController {
     return linVel.add(Vector3.Cross(angVel, r));
   }
 
+  // ─── Shop upgrade application ──────────────────────────
+  applyUpgrades(stats) {
+    if (!stats) return;
+    this._upgrades = stats;
+  }
+
   // ─── Helpers used by other systems ──────────────────────
   _getForward() {
     return Vector3.TransformNormal(new Vector3(0, 0, 1), this.root.getWorldMatrix()).normalize();
@@ -423,12 +432,17 @@ export class CarController {
   getForward() { return this._getForward(); }
 
   takeDamage(amount) {
-    this.health = Math.max(0, this.health - amount);
+    const resist = this._upgrades?.resist ?? 0;
+    const actual = amount * (1 - resist);
+    this.health = Math.max(0, this.health - actual);
   }
 
   reset() {
-    this.health = CAR.maxHealth;
-    this.nitro = 100;
+    const uHealth = this._upgrades?.healthMult ?? 1;
+    const uNitroCap = this._upgrades?.nitroCap ?? 1;
+    this.health = CAR.maxHealth * uHealth;
+    this.maxHealth = this.health;
+    this.nitro = 100 * uNitroCap;
     this._steerAngle = 0;
     const rx = 5 + (Math.random() - 0.5) * 20;
     const rz = 5 + (Math.random() - 0.5) * 20;

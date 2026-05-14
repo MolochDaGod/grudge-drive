@@ -289,6 +289,84 @@
     .cc-label { color: #555; font-size: 0.65rem; letter-spacing: 0.15em; text-transform: uppercase; margin-right: 8px; }
     .cc-value { color: #aaa; font-size: 0.85rem; }
     .cc-uuid { font-family: monospace; font-size: 0.65rem; color: #444; }
+
+    /* ── Car Shop Overlay ── */
+    #carShop {
+      position: fixed; inset: 0; z-index: 55;
+      background: radial-gradient(ellipse at 50% 20%, rgba(20,14,30,0.97) 0%, rgba(10,10,12,0.99) 100%);
+      display: none; flex-direction: column; align-items: center; justify-content: center;
+      font-family: 'Inter', sans-serif; overflow-y: auto;
+    }
+    #carShop.active { display: flex; }
+
+    .shop-body { width: 100%; max-width: 740px; padding: 24px; }
+    .shop-header { text-align: center; margin-bottom: 28px; }
+    .shop-title {
+      font-family: 'Cinzel Decorative', serif; font-size: 2rem; font-weight: 900;
+      background: linear-gradient(135deg, #c9952a 0%, #f5d77a 40%, #c9952a 60%, #8b6914 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      letter-spacing: 0.1em; margin-bottom: 12px;
+    }
+    .shop-coins {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: rgba(201,149,42,0.08); border: 1px solid #c9952a30;
+      padding: 8px 20px; border-radius: 4px;
+    }
+    .coin-icon { font-size: 1.4rem; }
+    .coin-value { color: #c9952a; font-family: 'Cinzel Decorative', serif; font-size: 1.6rem; font-weight: 900; }
+    .coin-label { color: #666; font-size: 0.6rem; letter-spacing: 0.2em; }
+
+    .shop-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-bottom: 24px; }
+    @media (max-width: 600px) { .shop-grid { grid-template-columns: 1fr; } }
+
+    .shop-card {
+      padding: 20px; border: 1px solid #2a2a30; background: rgba(15,15,20,0.85);
+      transition: all 0.25s; position: relative;
+    }
+    .shop-card:hover { border-color: #444; }
+    .shop-card.maxed { border-color: #c9952a40; background: rgba(201,149,42,0.04); }
+    .shop-card-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+    .shop-card-icon { font-size: 1.4rem; }
+    .shop-card-label { color: #c9952a; font-family: 'Cinzel Decorative', serif; font-size: 1rem; font-weight: 700; }
+    .shop-card-desc { color: #666; font-size: 0.7rem; letter-spacing: 0.05em; margin-bottom: 12px; }
+    .shop-card-current { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .tier-name { color: #ddd; font-size: 0.85rem; font-weight: 600; }
+    .tier-level { color: #555; font-size: 0.65rem; letter-spacing: 0.1em; }
+
+    .tier-pips { display: flex; gap: 4px; margin-bottom: 12px; }
+    .tier-pip {
+      flex: 1; height: 4px; border-radius: 2px;
+      background: #1a1a1f; border: 1px solid #333; transition: all 0.3s;
+    }
+    .tier-pip.filled { background: #c9952a; border-color: #c9952a; }
+    .tier-pip.next { border-color: #c9952a60; background: rgba(201,149,42,0.15); }
+
+    .shop-buy-btn {
+      width: 100%; font-size: 0.75rem !important; padding: 10px 16px !important;
+      text-align: center;
+    }
+    .shop-buy-btn.locked { opacity: 0.4; cursor: not-allowed; }
+    .shop-maxed {
+      text-align: center; color: #c9952a; font-family: 'Cinzel Decorative', serif;
+      font-size: 0.85rem; font-weight: 700; letter-spacing: 0.2em; padding: 10px 0;
+    }
+
+    .shop-footer { text-align: center; }
+    .shop-hint { color: #555; font-size: 0.7rem; letter-spacing: 0.1em; margin-bottom: 16px; }
+    .shop-close-btn { font-size: 0.9rem !important; }
+
+    /* HUD coins display */
+    .hud-coins {
+      position: absolute; top: 20px; right: 20px;
+      display: flex; align-items: center; gap: 6px;
+      background: rgba(10,10,12,0.7); border: 1px solid #c9952a30;
+      padding: 6px 14px; backdrop-filter: blur(4px);
+    }
+    .hud-coins .coin-icon { font-size: 1rem; }
+    .hud-coins .coin-val {
+      color: #c9952a; font-family: 'Cinzel Decorative', serif;
+      font-size: 1rem; font-weight: 700;
+    }
   </style>
 </head>
 <body>
@@ -316,6 +394,7 @@
       <div class="char-detail" id="menuCharDetail"></div>
     </div>
     <button class="menu-btn" id="btnPlay">Enter Arena</button>
+    <button class="menu-btn" id="btnShop">Vehicle Shop</button>
     <button class="menu-btn" id="btnCreate">Create Driver</button>
     <button class="menu-btn" id="btnChange" style="display:none">Change Driver</button>
     <button class="menu-btn" id="btnControls">Controls</button>
@@ -362,6 +441,15 @@
       </div>
     </div>
     <div class="hud-message" id="hudMessage"></div>
+    <div class="hud-coins">
+      <span class="coin-icon">🪙</span>
+      <span class="coin-val" id="hudCoins">0</span>
+    </div>
+  </div>
+
+  <!-- Car Shop -->
+  <div id="carShop">
+    <div class="shop-body"></div>
   </div>
 
   <!-- Game Over -->

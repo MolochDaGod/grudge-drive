@@ -9,6 +9,7 @@ import { HUDController } from './ui/HUDController.js';
 import { AudioManager } from './game/AudioManager.js';
 import { characterManager, RACES } from './game/CharacterManager.js';
 import { CharacterCreation } from './ui/CharacterCreation.js';
+import { CarShop, shopState, COINS_PER_KILL, COINS_SURVIVAL_BONUS } from './ui/CarShop.js';
 
 // DOM refs
 const canvas = document.getElementById('renderCanvas');
@@ -21,8 +22,9 @@ const gameOverScreen = document.getElementById('gameOver');
 
 let engine, scene, havokInstance;
 let player, weapons, aiManager, hudCtrl, audio;
-let charCreation;
-let gameState = 'loading'; // loading | menu | creating | playing | dead
+let charCreation, carShop;
+let gameState = 'loading'; // loading | menu | creating | shop | playing | dead
+let _survivalCoinTimer = 0;
 
 // --- Loading ---
 function updateLoad(pct, text) {
@@ -111,12 +113,16 @@ async function init() {
 
   // Character creation UI
   charCreation = new CharacterCreation();
+  carShop = new CarShop();
 
-  // Try loading saved character from Puter KV
+  // Try loading saved character + shop data from Puter KV
   await characterManager.load();
+  await shopState.load();
   if (characterManager.hasCharacter) {
     applyCharacterToGame();
   }
+  // Apply shop upgrades to vehicle
+  applyShopUpgrades();
 
   // HUD (reads character data in constructor)
   hudCtrl = new HUDController(player, weapons);
@@ -139,6 +145,14 @@ async function init() {
       weapons.update(dt);
       aiManager.update(dt);
       hudCtrl.update();
+      updateHudCoins();
+
+      // Survival coin bonus every 30s
+      _survivalCoinTimer += dt;
+      if (_survivalCoinTimer >= 30) {
+        _survivalCoinTimer -= 30;
+        shopState.addCoins(COINS_SURVIVAL_BONUS);
+      }
 
       if (player.health <= 0 && gameState === 'playing') {
         gameState = 'dead';
@@ -167,16 +181,48 @@ document.getElementById('btnChange').addEventListener('click', async () => {
 });
 
 document.getElementById('btnControls').addEventListener('click', () => {
-  alert('WASD - Drive\nSPACE - Handbrake\nSHIFT - Nitro\nMouse - Aim\nLeft Click - Fire\n1/2/3 - Switch Weapon\nR - Reload');
+  alert('WASD - Drive\nSPACE - Handbrake\nSHIFT - Nitro\nMouse - Aim\nLeft Click - Fire\n1/2/3 - Switch Weapon');
 });
+
+document.getElementById('btnShop').addEventListener('click', () => {
+  mainMenu.classList.add('hidden');
+  gameState = 'shop';
+  carShop.show();
+
+  // Watch for shop close → return to menu
+  const obs = new MutationObserver(() => {
+    if (!document.getElementById('carShop').classList.contains('active')) {
+      obs.disconnect();
+      applyShopUpgrades();
+      mainMenu.classList.remove('hidden');
+      updateMenuForCharacter();
+      gameState = 'menu';
+    }
+  });
+  obs.observe(document.getElementById('carShop'), { attributes: true, attributeFilter: ['class'] });
+});
+
+function applyShopUpgrades() {
+  const s = shopState.getStats();
+  if (player) player.applyUpgrades(s);
+  if (weapons) weapons.applyUpgrades(s);
+}
+
+function updateHudCoins() {
+  const el = document.getElementById('hudCoins');
+  if (el) el.textContent = shopState.coins;
+}
 
 function startGame() {
   gameState = 'playing';
+  _survivalCoinTimer = 0;
+  applyShopUpgrades();
   player.reset();
   weapons.reset();
   aiManager.reset();
   hudCtrl.reset();
-  hudCtrl._loadDriverInfo(); // refresh HUD portrait
+  hudCtrl._loadDriverInfo();
+  updateHudCoins();
   canvas.requestPointerLock?.();
 }
 
@@ -185,7 +231,7 @@ function showGameOver() {
   hud.classList.remove('active');
   gameOverScreen.classList.add('active');
   document.getElementById('goStats').textContent =
-    `Eliminations: ${hudCtrl.kills} | Survived: ${Math.floor(hudCtrl.survivalTime)}s`;
+    `Eliminations: ${hudCtrl.kills} | Survived: ${Math.floor(hudCtrl.survivalTime)}s | +${hudCtrl.kills * COINS_PER_KILL} coins`;
   document.exitPointerLock?.();
 }
 
