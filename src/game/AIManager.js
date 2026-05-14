@@ -2,6 +2,7 @@ import {
   MeshBuilder, StandardMaterial, Color3, Vector3, Quaternion,
   PhysicsAggregate, PhysicsShapeType, TransformNode
 } from '@babylonjs/core';
+import { getTerrainHeight } from './TerrainGenerator.js';
 
 const BOT_CONFIG = {
   maxSpeed: 28,
@@ -89,10 +90,13 @@ export class AIManager {
       wheels.push(w);
     });
 
-    // Spawn at random position
+    // Spawn at random position on terrain
     const angle = Math.random() * Math.PI * 2;
     const dist = 40 + Math.random() * 40;
-    root.position.set(Math.cos(angle) * dist, 2, Math.sin(angle) * dist);
+    const sx = Math.cos(angle) * dist;
+    const sz = Math.sin(angle) * dist;
+    const sy = getTerrainHeight(sx, sz) + 3;
+    root.position.set(sx, sy, sz);
 
     const physics = new PhysicsAggregate(root, PhysicsShapeType.BOX, {
       mass: BOT_CONFIG.mass,
@@ -178,6 +182,12 @@ export class AIManager {
         bot.root.rotationQuaternion = Quaternion.FromEulerAngles(euler.x * 0.85, euler.y, euler.z * 0.85);
       }
 
+      // Fall recovery
+      if (botPos.y < -20) {
+        this._respawn(bot);
+        continue;
+      }
+
       // Wheel spin
       const spd = bot.physics.body.getLinearVelocity().length();
       bot.wheels.forEach(w => { w.rotation.x += spd * dt * 3; });
@@ -255,7 +265,10 @@ export class AIManager {
     bot.health = BOT_CONFIG.health;
     const angle = Math.random() * Math.PI * 2;
     const dist = 50 + Math.random() * 30;
-    bot.root.position.set(Math.cos(angle) * dist, 2, Math.sin(angle) * dist);
+    const rx = Math.cos(angle) * dist;
+    const rz = Math.sin(angle) * dist;
+    const ry = getTerrainHeight(rx, rz) + 3;
+    bot.root.position.set(rx, ry, rz);
     bot.root.rotationQuaternion = Quaternion.Identity();
     bot.physics.body.setLinearVelocity(Vector3.Zero());
     bot.physics.body.setAngularVelocity(Vector3.Zero());
