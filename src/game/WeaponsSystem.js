@@ -47,9 +47,14 @@ export class WeaponsSystem {
 
   _setupInput() {
     window.addEventListener('keydown', (e) => {
+      // 1/2/3 direct select
       if (e.code === 'Digit1') this.currentIndex = 0;
       if (e.code === 'Digit2') this.currentIndex = 1;
       if (e.code === 'Digit3') this.currentIndex = 2;
+      // Q cycles through weapons
+      if (e.code === 'KeyQ') {
+        this.currentIndex = (this.currentIndex + 1) % 3;
+      }
     });
   }
 
@@ -122,9 +127,21 @@ export class WeaponsSystem {
   update(dt) {
     if (this.cooldown > 0) this.cooldown -= dt;
 
-    // Fire on mouse down
+    // LMB = fire current weapon (gun by default)
     if (this.player.keys['Mouse0']) {
       this.fire();
+    }
+    // RMB = fire secondary (rocket if available, else bomb)
+    if (this.player.keys['Mouse2']) {
+      const prev = this.currentIndex;
+      // Try rocket first, then bomb
+      if (this.ammo[1] > 0) {
+        this.currentIndex = 1;
+      } else if (this.ammo[2] > 0) {
+        this.currentIndex = 2;
+      }
+      this.fire();
+      this.currentIndex = prev;
     }
 
     // Move projectiles

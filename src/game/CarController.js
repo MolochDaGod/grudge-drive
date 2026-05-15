@@ -6,6 +6,7 @@ import {
 import { RACES, CLASSES } from './CharacterManager.js';
 import { getTerrainHeight } from './TerrainGenerator.js';
 import { SpringSimulator } from '../physics/SpringSimulator.js';
+import { loadDriver } from './DriverLoader.js';
 
 // ── Vehicle tuning (Sketchbook-inspired) ──
 const CAR = {
@@ -193,11 +194,12 @@ export class CarController {
     this.root.metadata = { type: 'player' };
   }
 
-  // ─── Character colors ──────────────────────────────────
-  setCharacterColors(raceId, classId) {
+  // ─── Character colors + Grudge driver GLB ───────────────
+  async setCharacterColors(raceId, classId) {
     const race = RACES.find(r => r.id === raceId) || RACES[0];
     const cls = CLASSES.find(c => c.id === classId) || CLASSES[0];
 
+    // Paint kart body with race colors
     if (this.body?.material) {
       this.body.material.diffuseColor = new Color3(race.color.r, race.color.g, race.color.b);
       this.body.material.emissiveColor = new Color3(race.emissive.r, race.emissive.g, race.emissive.b);
@@ -220,6 +222,19 @@ export class CarController {
         0.25 + cls.secondaryColor.b * 0.15
       );
     }
+
+    // Load the real Grudge race character as the driver
+    // Remove previous driver if any
+    if (this._driverNode) {
+      this._driverNode.getChildMeshes().forEach(m => m.dispose());
+      this._driverNode.dispose();
+      this._driverNode = null;
+    }
+    try {
+      this._driverNode = await loadDriver(this.scene, raceId, this.root, '_player');
+    } catch (e) {
+      console.warn('[CarController] Driver GLB load failed:', e);
+    }
   }
 
   // ─── Input ─────────────────────────────────────────────
@@ -231,8 +246,16 @@ export class CarController {
       this.mouse.x += e.movementX * 0.002;
       this.mouse.y += e.movementY * 0.002;
     });
-    canvas.addEventListener('mousedown', () => { this.keys['Mouse0'] = true; });
-    canvas.addEventListener('mouseup', () => { this.keys['Mouse0'] = false; });
+    // LMB = Mouse0, RMB = Mouse2
+    canvas.addEventListener('mousedown', (e) => {
+      if (e.button === 0) this.keys['Mouse0'] = true;
+      if (e.button === 2) this.keys['Mouse2'] = true;
+    });
+    canvas.addEventListener('mouseup', (e) => {
+      if (e.button === 0) this.keys['Mouse0'] = false;
+      if (e.button === 2) this.keys['Mouse2'] = false;
+    });
+    canvas.addEventListener('contextmenu', (e) => e.preventDefault());
   }
 
   // ─── Main update — raycast vehicle ─────────────────────
@@ -253,8 +276,8 @@ export class CarController {
     const vel = body.getLinearVelocity();
     const speed = vel.length();
 
-    // ── Input ──
-    const isNitro = (this.keys['ShiftLeft'] || this.keys['ShiftRight']) && this.nitro > 0;
+    // ── Input (WASD + E=turbo, Space=handbrake) ──
+    const isNitro = (this.keys['KeyE']) && this.nitro > 0;
     const nitroMult = isNitro ? CAR.nitroMultiplier : 1;
 
     const wantThrottle = this.keys['KeyW'] || this.keys['ArrowUp'];
@@ -430,10 +453,10 @@ export class CarController {
       body.setLinearVelocity(vel.normalize().scale(maxV));
     }
 
-    // ── Nitro ──
+    // ── Nitro (E key) ──
     if (isNitro) {
       this.nitro = Math.max(0, this.nitro - CAR.nitroDrain * dt);
-    } else if (!this.keys['ShiftLeft'] && !this.keys['ShiftRight']) {
+    } else if (!this.keys['KeyE']) {
       this.nitro = Math.min(100, this.nitro + CAR.nitroRegen * dt);
     }
 
