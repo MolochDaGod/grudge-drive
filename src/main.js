@@ -11,6 +11,7 @@ import { characterManager, RACES } from './game/CharacterManager.js';
 import { CharacterCreation } from './ui/CharacterCreation.js';
 import { CarShop, shopState, COINS_PER_KILL, COINS_SURVIVAL_BONUS } from './ui/CarShop.js';
 import { CombatTargeting } from './game/CombatTargeting.js';
+import { GameFlowUI } from './ui/GameFlowUI.js';
 
 // DOM refs
 const canvas = document.getElementById('renderCanvas');
@@ -23,8 +24,10 @@ const gameOverScreen = document.getElementById('gameOver');
 
 let engine, scene, havokInstance;
 let player, weapons, aiManager, hudCtrl, audio;
-let charCreation, carShop, combat;
-let gameState = 'loading'; // loading | menu | creating | shop | playing | dead
+let charCreation, carShop, combat, gameFlowUI;
+let gameState = 'loading'; // loading | menu | creating | shop | lobby | playing | dead
+let _currentGameMode = 'battle';
+let _currentTrackId = 'grudge_arena';
 let _survivalCoinTimer = 0;
 
 // --- Loading ---
@@ -114,9 +117,10 @@ async function init() {
   combat = new CombatTargeting(scene, player, aiManager);
   updateLoad(85, 'Checking identity...');
 
-  // Character creation UI
+  // UI overlays
   charCreation = new CharacterCreation();
   carShop = new CarShop();
+  gameFlowUI = new GameFlowUI();
 
   // Try loading saved character + shop data from Puter KV
   await characterManager.load();
@@ -170,9 +174,24 @@ async function init() {
 }
 
 // --- Menu ---
-document.getElementById('btnPlay').addEventListener('click', () => {
+document.getElementById('btnPlay').addEventListener('click', async () => {
   if (!characterManager.hasCharacter) return;
   mainMenu.classList.add('hidden');
+  gameState = 'lobby';
+
+  // Show the lobby: pick game mode + track
+  const result = await gameFlowUI.show();
+  if (!result) {
+    // Player cancelled — back to menu
+    mainMenu.classList.remove('hidden');
+    gameState = 'menu';
+    return;
+  }
+
+  _currentGameMode = result.mode;
+  _currentTrackId = result.trackId;
+
+  // Launch into the game
   hud.classList.add('active');
   canvas.focus();
   startGame();
