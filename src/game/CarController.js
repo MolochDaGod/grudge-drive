@@ -164,9 +164,8 @@ export class CarController {
     physBox.parent = this.root;
     physBox.isVisible = false;
 
-    // Spawn above terrain at centre spawn area
-    const spawnY = getTerrainHeight(5, 5) + 3;
-    this.root.position.set(5, spawnY, 5);
+    // Spawn above the track (high enough to land on any surface)
+    this.root.position.set(0, 10, 0);
 
     this.physics = new PhysicsAggregate(this.root, PhysicsShapeType.BOX, {
       mass: CAR.mass,
@@ -476,8 +475,8 @@ export class CarController {
     });
 
     // ── Fall recovery ──
-    if (chassisPos.y < -20) {
-      this.root.position.set(0, getTerrainHeight(0, 0) + 4, 0);
+    if (chassisPos.y < -15) {
+      this.root.position.set(0, 10, 0);
       this.root.rotationQuaternion = Quaternion.Identity();
       body.setLinearVelocity(Vector3.Zero());
       body.setAngularVelocity(Vector3.Zero());
@@ -547,10 +546,9 @@ export class CarController {
     this._gear = 1;
     this._shiftTimer = 0;
     this._airSpinTimer = 0;
-    const rx = 5 + (Math.random() - 0.5) * 20;
-    const rz = 5 + (Math.random() - 0.5) * 20;
-    const ry = getTerrainHeight(rx, rz) + 3;
-    this.root.position.set(rx, ry, rz);
+    const rx = (Math.random() - 0.5) * 20;
+    const rz = (Math.random() - 0.5) * 20;
+    this.root.position.set(rx, 10, rz);
     this.root.rotationQuaternion = Quaternion.Identity();
     this.physics?.body?.setLinearVelocity(Vector3.Zero());
     this.physics?.body?.setAngularVelocity(Vector3.Zero());

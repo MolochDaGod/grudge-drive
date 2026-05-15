@@ -83,6 +83,16 @@ export async function createArena(scene) {
     }, scene);
   }
 
+  // --- Safety ground plane (catches cars that fall through track) ---
+  const safetyGround = MeshBuilder.CreateGround('safetyGround', {
+    width: ARENA_SIZE * 2, height: ARENA_SIZE * 2
+  }, scene);
+  safetyGround.position.y = -5;
+  safetyGround.isVisible = false;
+  new PhysicsAggregate(safetyGround, PhysicsShapeType.BOX, {
+    mass: 0, friction: 0.8, restitution: 0.1
+  }, scene);
+
   // --- Invisible boundary walls (keep cars from falling off the map) ---
   const half = ARENA_SIZE / 2;
   [{ p: [0, 7, half], r: 0 }, { p: [0, 7, -half], r: 0 },

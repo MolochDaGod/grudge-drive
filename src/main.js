@@ -46,12 +46,14 @@ function updateMenuForCharacter() {
   const charDetail = document.getElementById('menuCharDetail');
   const charPortrait = document.getElementById('menuCharPortrait');
 
+  // Always show Play button
+  btnPlay.style.display = '';
+
   if (characterManager.hasCharacter) {
     const c = characterManager.character;
     const race = characterManager.getRace();
     const cls = characterManager.getClass();
 
-    btnPlay.style.display = '';
     btnCreate.style.display = 'none';
     btnChange.style.display = '';
     charInfo.classList.add('active');
@@ -64,7 +66,6 @@ function updateMenuForCharacter() {
       charPortrait.innerHTML = `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#444;font-size:2rem">?</div>`;
     }
   } else {
-    btnPlay.style.display = 'none';
     btnCreate.style.display = '';
     btnChange.style.display = 'none';
     charInfo.classList.remove('active');
@@ -175,7 +176,7 @@ async function init() {
 
 // --- Menu ---
 document.getElementById('btnPlay').addEventListener('click', async () => {
-  if (!characterManager.hasCharacter) return;
+  // Allow playing without a character (quick play)
   mainMenu.classList.add('hidden');
   gameState = 'lobby';
 
