@@ -180,7 +180,7 @@ document.getElementById('btnPlay').addEventListener('click', async () => {
   mainMenu.classList.add('hidden');
   gameState = 'lobby';
 
-  // Show the lobby: pick game mode + track
+  // Show the full flow: race → kart → mode/track → launch
   const result = await gameFlowUI.show();
   if (!result) {
     // Player cancelled — back to menu
@@ -191,6 +191,11 @@ document.getElementById('btnPlay').addEventListener('click', async () => {
 
   _currentGameMode = result.mode;
   _currentTrackId = result.trackId;
+
+  // Apply selected race + kart to the player
+  if (result.raceId) {
+    await player.setCharacterColors(result.raceId, 'warrior');
+  }
 
   // Launch into the game
   hud.classList.add('active');
