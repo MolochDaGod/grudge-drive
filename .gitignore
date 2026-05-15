@@ -29,6 +29,10 @@ asset_summary.json
 AGENTS.md
 CLAUDE.md
 
+# Large 3D assets (served from R2 CDN in production)
+public/assets/kenney/
+public/angry_birds_go_kart_pack.glb
+
 # OS
 Thumbs.db
 .DS_Store

@@ -2,6 +2,7 @@ import {
   MeshBuilder, StandardMaterial, Color3, Vector3,
   PhysicsAggregate, PhysicsShapeType, ParticleSystem, Texture
 } from '@babylonjs/core';
+import { VFXManager } from './VFXManager.js';
 
 const WEAPONS = [
   { name: 'gun',    damage: 8,  rate: 0.15, speed: 80, ammo: Infinity, projLife: 1.5 },
@@ -14,6 +15,7 @@ export class WeaponsSystem {
     this.scene = scene;
     this.player = player;
     this.audio = audio;
+    this.vfx = new VFXManager(scene);
     this.currentIndex = 0;
     this.cooldown = 0;
     this.ammo = WEAPONS.map(w => w.ammo);
@@ -85,10 +87,16 @@ export class WeaponsSystem {
     const dmgMult = this._upgrades?.damageMult ?? 1;
     mesh.metadata = { type: 'projectile', damage: w.damage * dmgMult, owner: 'player' };
 
+    // Attach VFX trail
+    const trail = w.name === 'rocket'
+      ? this.vfx.rocketTrail(mesh)
+      : this.vfx.bulletTracer(pos, dir, w.speed);
+
     const proj = {
       mesh,
       velocity: dir.scale(w.speed),
       life: w.life || w.projLife,
+      trail,
     };
 
     this.projectiles.push(proj);
@@ -145,28 +153,8 @@ export class WeaponsSystem {
   }
 
   _explode(pos, damage) {
-    // Visual flash
-    const flash = MeshBuilder.CreateSphere('explosion', { diameter: 8 }, this.scene);
-    flash.position = pos.clone();
-    const mat = new StandardMaterial('explMat', this.scene);
-    mat.emissiveColor = new Color3(1, 0.5, 0.1);
-    mat.alpha = 0.7;
-    mat.disableLighting = true;
-    flash.material = mat;
-
-    // Fade out
-    let life = 0.4;
-    const obs = this.scene.onBeforeRenderObservable.add(() => {
-      life -= this.scene.getEngine().getDeltaTime() / 1000;
-      mat.alpha = Math.max(0, life / 0.4) * 0.7;
-      flash.scaling.setAll(1 + (0.4 - life) * 5);
-      if (life <= 0) {
-        flash.dispose();
-        mat.dispose();
-        this.scene.onBeforeRenderObservable.remove(obs);
-      }
-    });
-
+    // Full VFX explosion (fire burst + smoke cloud + shockwave ring)
+    this.vfx.explosion(pos, 1.0);
     this.audio.playOnce('explosion');
   }
 

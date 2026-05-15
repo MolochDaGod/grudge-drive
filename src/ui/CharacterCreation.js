@@ -1,4 +1,5 @@
 import { RACES, CLASSES, characterManager } from '../game/CharacterManager.js';
+import { getKartForRace } from '../game/KartRegistry.js';
 
 const STEPS = ['name', 'race', 'class', 'portrait', 'confirm'];
 
@@ -82,20 +83,44 @@ export class CharacterCreation {
     });
   }
 
-  // ── Step 2: Race ─────────────────────────────────────────────────
+  // ── Step 2: Race + Kart Preview ──────────────────────────────────
   _renderRace(body) {
     body.innerHTML = `
       <h2 class="cc-title">CHOOSE YOUR RACE</h2>
-      <p class="cc-subtitle">Your race defines your vehicle's identity</p>
+      <p class="cc-subtitle">Your race defines your kart, weapon, and passive ability</p>
       <div class="cc-grid cc-grid-6">
-        ${RACES.map(r => `
+        ${RACES.map(r => {
+          const kart = getKartForRace(r.id);
+          const s = kart.stats;
+          return `
           <div class="cc-card ${this._data.raceId === r.id ? 'selected' : ''}" data-id="${r.id}"
                style="--accent:${r.accent}">
             <div class="cc-card-name">${r.name}</div>
-            <div class="cc-card-trait">${r.trait}</div>
+            <div class="cc-card-kart" style="color:${r.accent};font-size:0.75rem;font-weight:700;margin:2px 0">
+              🏎️ ${kart.kartName}
+            </div>
+            <div class="cc-card-trait" style="font-size:0.65rem">${r.trait}</div>
+            <div class="cc-stats" style="margin:6px 0;font-size:0.6rem;text-align:left;width:100%">
+              <div style="display:flex;justify-content:space-between"><span>⚡ Speed</span><span>${s.topSpeed}</span></div>
+              <div style="background:#222;border-radius:2px;height:4px;margin:1px 0 3px"><div style="width:${s.topSpeed}%;height:100%;background:${r.accent};border-radius:2px"></div></div>
+              <div style="display:flex;justify-content:space-between"><span>🚀 Accel</span><span>${s.acceleration}</span></div>
+              <div style="background:#222;border-radius:2px;height:4px;margin:1px 0 3px"><div style="width:${s.acceleration}%;height:100%;background:${r.accent};border-radius:2px"></div></div>
+              <div style="display:flex;justify-content:space-between"><span>🎯 Handle</span><span>${s.handling}</span></div>
+              <div style="background:#222;border-radius:2px;height:4px;margin:1px 0 3px"><div style="width:${s.handling}%;height:100%;background:${r.accent};border-radius:2px"></div></div>
+              <div style="display:flex;justify-content:space-between"><span>🛡️ Armor</span><span>${s.armor}</span></div>
+              <div style="background:#222;border-radius:2px;height:4px;margin:1px 0 3px"><div style="width:${s.armor}%;height:100%;background:${r.accent};border-radius:2px"></div></div>
+              <div style="display:flex;justify-content:space-between"><span>🔥 Nitro</span><span>${s.nitroCapacity}</span></div>
+              <div style="background:#222;border-radius:2px;height:4px;margin:1px 0 3px"><div style="width:${s.nitroCapacity}%;height:100%;background:${r.accent};border-radius:2px"></div></div>
+            </div>
+            <div style="font-size:0.6rem;color:#aaa;border-top:1px solid #333;padding-top:4px;margin-top:2px">
+              <div style="color:${r.accent};font-weight:600">⚔️ ${kart.weapon.name}</div>
+              <div style="font-size:0.55rem;color:#888">${kart.weapon.desc}</div>
+              <div style="color:#c8b060;font-weight:600;margin-top:3px">✨ ${kart.passive.name}</div>
+              <div style="font-size:0.55rem;color:#888">${kart.passive.desc}</div>
+            </div>
             <div class="cc-card-swatch" style="background:${r.accent}"></div>
-          </div>
-        `).join('')}
+          </div>`;
+        }).join('')}
       </div>
       <div class="cc-nav">
         <button class="menu-btn cc-btn cc-back" id="ccBack">← Back</button>

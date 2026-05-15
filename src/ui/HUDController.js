@@ -62,9 +62,10 @@ export class HUDController {
       this._speedValue.textContent = this.player.currentSpeed || 0;
     }
 
-    // Health
+    // Health (uses per-kart maxHealth from cfg)
     if (this._healthFill) {
-      const pct = Math.max(0, (this.player.health / 100) * 100);
+      const maxHp = this.player.cfg?.maxHealth || 100;
+      const pct = Math.max(0, (this.player.health / maxHp) * 100);
       this._healthFill.style.width = `${pct}%`;
     }
 
