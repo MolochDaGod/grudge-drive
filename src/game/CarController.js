@@ -5,40 +5,50 @@ import {
 } from '@babylonjs/core';
 import { RACES, CLASSES } from './CharacterManager.js';
 import { getTerrainHeight } from './TerrainGenerator.js';
+import { SpringSimulator } from '../physics/SpringSimulator.js';
 
-// ── Vehicle tuning ──
+// ── Vehicle tuning (Sketchbook-inspired) ──
 const CAR = {
-  // Chassis
   mass: 80,
   maxHealth: 100,
 
-  // Suspension (per-wheel spring/damper)
-  suspRestLength: 0.65,    // natural spring length
-  suspTravel: 0.35,        // max compression/extension
-  springStiffness: 550,    // N per metre of compression
-  damperCompression: 45,   // damping when compressing
-  damperRelaxation: 35,    // damping when extending
+  // Suspension
+  suspRestLength: 0.65,
+  suspTravel: 0.35,
+  springStiffness: 550,
+  damperCompression: 45,
+  damperRelaxation: 35,
   wheelRadius: 0.35,
 
-  // Drive
-  engineForce: 4200,       // raw engine N
+  // Gear transmission (Sketchbook pattern)
+  engineForce: 500,            // base N per gear
   brakeForce: 3000,
-  maxSpeed: 42,            // m/s hard cap
   nitroMultiplier: 1.8,
   nitroDrain: 25,
   nitroRegen: 8,
 
   // Steering
-  maxSteerAngle: 0.55,     // radians (~31°)
-  steerSpeed: 3.5,         // how fast wheel turns to target
-  steerReturn: 5.0,        // how fast it centres
+  maxSteerAngle: 0.8,          // radians (wider for drift feel)
 
   // Traction
-  lateralGrip: 0.92,       // fraction of lateral velocity killed per second
-  rollingResistance: 0.3,  // small constant drag
-
-  // Anti-roll
+  lateralGrip: 0.92,
+  rollingResistance: 0.3,
   antiRollStiffness: 120,
+
+  // Air spin (Sketchbook-style)
+  airSpinAccel: 0.15,
+  maxAirSpin: 2.0,
+};
+
+// Sketchbook-style gear table: max speed (m/s) per gear
+const GEARS_MAX_SPEED = {
+  R: -4,
+  0: 0,
+  1: 5,
+  2: 9,
+  3: 14,
+  4: 19,
+  5: 26,
 };
 
 // Wheel local attach points (relative to chassis origin at body centre)
@@ -56,6 +66,7 @@ export class CarController {
     this.health = CAR.maxHealth;
     this.nitro = 100;
     this.currentSpeed = 0;
+    this.forwardSpeed = 0;   // signed speed along chassis forward
 
     this.keys = {};
     this.mouse = { x: 0, y: 0 };
@@ -67,10 +78,16 @@ export class CarController {
     this.gunMount = null;
 
     // Wheel visual meshes
-    this.wheels = [];          // Mesh[]
-    // Suspension state per wheel
-    this._susp = [0, 0, 0, 0]; // current compression length
-    this._steerAngle = 0;
+    this.wheels = [];
+    this._susp = [0, 0, 0, 0];
+
+    // Sketchbook-style spring steering (freq=10Hz, damping=0.6)
+    this._steerSpring = new SpringSimulator(10, 0.6, 0);
+
+    // Gear state
+    this._gear = 1;
+    this._shiftTimer = 0;
+    this._airSpinTimer = 0;
 
     // Physics raycast helper (reused each frame)
     this._rayResult = new PhysicsRaycastResult();
@@ -240,23 +257,34 @@ export class CarController {
     const isNitro = (this.keys['ShiftLeft'] || this.keys['ShiftRight']) && this.nitro > 0;
     const nitroMult = isNitro ? CAR.nitroMultiplier : 1;
 
-    let throttle = 0;
-    if (this.keys['KeyW'] || this.keys['ArrowUp']) throttle = 1;
-    if (this.keys['KeyS'] || this.keys['ArrowDown']) throttle = -0.6;
+    const wantThrottle = this.keys['KeyW'] || this.keys['ArrowUp'];
+    const wantReverse = this.keys['KeyS'] || this.keys['ArrowDown'];
+    const handbrake = !!this.keys['Space'];
 
     let steerInput = 0;
     if (this.keys['KeyA'] || this.keys['ArrowLeft']) steerInput = -1;
     if (this.keys['KeyD'] || this.keys['ArrowRight']) steerInput = 1;
 
-    const handbrake = !!this.keys['Space'];
+    // Measure forward speed (signed — positive = moving forward)
+    this.forwardSpeed = Vector3.Dot(vel, forward);
 
-    // Smooth steering
-    const steerTarget = steerInput * CAR.maxSteerAngle;
-    if (steerInput !== 0) {
-      this._steerAngle += (steerTarget - this._steerAngle) * Math.min(1, CAR.steerSpeed * dt);
+    // ── Spring-simulated steering (Sketchbook pattern) ──
+    // Compute drift correction angle
+    const velNorm = vel.length() > 0.5 ? vel.normalize() : forward;
+    const crossY = Vector3.Cross(velNorm, forward).y;
+    const driftCorrection = Math.asin(Math.max(-1, Math.min(1, crossY)));
+
+    const speedFactor = Math.max(1, Math.abs(this.forwardSpeed) * 0.3);
+    if (steerInput > 0) {
+      this._steerSpring.target = Math.min(-CAR.maxSteerAngle / speedFactor, -driftCorrection);
+      this._steerSpring.target = Math.max(-CAR.maxSteerAngle, Math.min(CAR.maxSteerAngle, this._steerSpring.target));
+    } else if (steerInput < 0) {
+      this._steerSpring.target = Math.max(CAR.maxSteerAngle / speedFactor, -driftCorrection);
+      this._steerSpring.target = Math.max(-CAR.maxSteerAngle, Math.min(CAR.maxSteerAngle, this._steerSpring.target));
     } else {
-      this._steerAngle *= Math.max(0, 1 - CAR.steerReturn * dt);
+      this._steerSpring.target = 0;
     }
+    this._steerSpring.simulate(dt);
 
     // ── Per-wheel raycast suspension ──
     let groundedCount = 0;
@@ -315,48 +343,89 @@ export class CarController {
     this._applyAntiRoll(body, worldMat, up, compressions, 0, 1, dt);
     this._applyAntiRoll(body, worldMat, up, compressions, 2, 3, dt);
 
-    // ── Drive force (rear wheels) ──
+    // ── Gear transmission (Sketchbook pattern) ──
     const uAccel = this._upgrades?.accelMult ?? 1;
-    if (grounded && throttle !== 0) {
-      const engineN = CAR.engineForce * throttle * nitroMult * uAccel;
-      // Apply on rear axle contact patches
-      for (let i = 2; i <= 3; i++) {
-        const worldPt = Vector3.TransformCoordinates(WHEEL_OFFSETS[i], worldMat);
-        body.applyForce(forward.scale(engineN * 0.5 * dt), worldPt);
+    const uSpeed = this._upgrades?.speedMult ?? 1;
+    const maxGears = 5;
+
+    if (this._shiftTimer > 0) {
+      this._shiftTimer -= dt;
+    } else if (grounded) {
+      if (wantReverse) {
+        // Reverse gear
+        const powerFactor = (GEARS_MAX_SPEED.R * uSpeed - this.forwardSpeed) / Math.abs(GEARS_MAX_SPEED.R * uSpeed);
+        const force = (CAR.engineForce / Math.max(this._gear, 1)) * Math.abs(powerFactor) * uAccel;
+        this._applyDriveForce(body, forward, force * dt, worldMat);
+      } else if (wantThrottle) {
+        // Forward gears with auto-shift
+        const gearMax = GEARS_MAX_SPEED[this._gear] * uSpeed * nitroMult;
+        const prevGearMax = GEARS_MAX_SPEED[this._gear - 1] * uSpeed * nitroMult;
+        const powerFactor = (gearMax - this.forwardSpeed) / (gearMax - prevGearMax || 1);
+
+        // Auto shift up / down
+        if (powerFactor < 0.1 && this._gear < maxGears) {
+          this._gear++;
+          this._shiftTimer = 0.2;
+        } else if (this._gear > 1 && powerFactor > 1.2) {
+          this._gear--;
+          this._shiftTimer = 0.2;
+        } else {
+          const force = (CAR.engineForce / this._gear) * Math.max(powerFactor, 0) * nitroMult * uAccel;
+          this._applyDriveForce(body, forward, -force * dt, worldMat);
+        }
       }
     }
 
-    // ── Steering torque ──
-    if (grounded && Math.abs(this._steerAngle) > 0.001 && speed > 0.5) {
-      // Speed-sensitive steering (less at high speed)
-      const steerFactor = 1 - Math.min(speed / (CAR.maxSpeed * 1.2), 0.7) * 0.6;
-      const yawTorque = this._steerAngle * steerFactor * 200 * dt;
+    // ── Steering torque (using spring sim position) ──
+    const steerVal = this._steerSpring.position;
+    if (grounded && Math.abs(steerVal) > 0.001 && speed > 0.5) {
+      const yawTorque = steerVal * 220 * dt;
       body.applyAngularImpulse(new Vector3(0, yawTorque, 0));
     }
 
     // ── Lateral grip (kill sideways sliding) ──
     if (grounded) {
       const lateralVel = right.scale(Vector3.Dot(vel, right));
-      const grip = handbrake ? 0.4 : CAR.lateralGrip;
+      const grip = handbrake ? 0.35 : CAR.lateralGrip;
       const correction = lateralVel.scale(-grip);
       body.applyForce(correction.scale(CAR.mass / dt * 0.016), chassisPos);
     }
 
     // ── Rolling resistance ──
-    if (grounded && throttle === 0 && speed > 0.2) {
+    if (grounded && !wantThrottle && !wantReverse && speed > 0.2) {
       const drag = vel.normalize().scale(-CAR.rollingResistance * CAR.mass);
       body.applyForce(drag, chassisPos);
     }
 
     // ── Handbrake ──
     if (handbrake && grounded) {
-      body.setLinearVelocity(vel.scale(0.96));
+      body.setLinearVelocity(vel.scale(0.95));
+    }
+
+    // ── Air spin control (Sketchbook pattern) ──
+    if (!grounded) {
+      this._airSpinTimer += dt;
+      const airInfluence = Math.min(this._airSpinTimer / 2, 1) * Math.min(speed, 1);
+      const angVel = body.getAngularVelocity();
+
+      // Roll with steer keys
+      if (steerInput > 0 && Vector3.Dot(angVel, forward) < CAR.maxAirSpin) {
+        body.setAngularVelocity(angVel.add(forward.scale(CAR.airSpinAccel * airInfluence)));
+      } else if (steerInput < 0 && Vector3.Dot(angVel, forward) > -CAR.maxAirSpin) {
+        body.setAngularVelocity(angVel.subtract(forward.scale(CAR.airSpinAccel * airInfluence)));
+      }
+      // Pitch with throttle/reverse
+      if (wantThrottle && Vector3.Dot(angVel, right) < CAR.maxAirSpin) {
+        body.setAngularVelocity(angVel.add(right.scale(CAR.airSpinAccel * airInfluence)));
+      } else if (wantReverse && Vector3.Dot(angVel, right) > -CAR.maxAirSpin) {
+        body.setAngularVelocity(angVel.subtract(right.scale(CAR.airSpinAccel * airInfluence)));
+      }
+    } else {
+      this._airSpinTimer = 0;
     }
 
     // ── Speed cap ──
-    const uSpeed = this._upgrades?.speedMult ?? 1;
-    const uNitroBoost = this._upgrades?.nitroBoost ?? 1;
-    const maxV = CAR.maxSpeed * nitroMult * uSpeed;
+    const maxV = GEARS_MAX_SPEED[5] * nitroMult * uSpeed * 1.1;
     if (speed > maxV) {
       body.setLinearVelocity(vel.normalize().scale(maxV));
     }
@@ -368,19 +437,19 @@ export class CarController {
       this.nitro = Math.min(100, this.nitro + CAR.nitroRegen * dt);
     }
 
-    // ── Keep mostly upright (gentle correction) ──
-    const rot = this.root.rotationQuaternion || Quaternion.Identity();
-    const euler = rot.toEulerAngles();
-    if (Math.abs(euler.x) > 0.6 || Math.abs(euler.z) > 0.6) {
-      const cx = euler.x * 0.92;
-      const cz = euler.z * 0.92;
-      this.root.rotationQuaternion = Quaternion.FromEulerAngles(cx, euler.y, cz);
+    // ── Keep mostly upright (gentle correction when grounded) ──
+    if (grounded) {
+      const rot = this.root.rotationQuaternion || Quaternion.Identity();
+      const euler = rot.toEulerAngles();
+      if (Math.abs(euler.x) > 0.5 || Math.abs(euler.z) > 0.5) {
+        this.root.rotationQuaternion = Quaternion.FromEulerAngles(euler.x * 0.92, euler.y, euler.z * 0.92);
+      }
     }
 
-    // ── Wheel spin + front steer visual ──
+    // ── Wheel spin + spring-steered front wheels ──
     this.wheels.forEach((w, i) => {
       w.rotation.x += speed * dt * 3;
-      if (i < 2) w.rotation.y = this._steerAngle * 0.7;
+      if (i < 2) w.rotation.y = steerVal * 0.7;
     });
 
     // ── Fall recovery ──
@@ -392,6 +461,14 @@ export class CarController {
     }
 
     this.currentSpeed = Math.round(speed * 3.6);
+  }
+
+  // ─── Drive force helper (applied at rear wheels) ──
+  _applyDriveForce(body, forward, forceDt, worldMat) {
+    for (let i = 2; i <= 3; i++) {
+      const worldPt = Vector3.TransformCoordinates(WHEEL_OFFSETS[i], worldMat);
+      body.applyForce(forward.scale(forceDt * 0.5), worldPt);
+    }
   }
 
   // ─── Anti-roll bar between two wheels on the same axle ──
@@ -443,7 +520,10 @@ export class CarController {
     this.health = CAR.maxHealth * uHealth;
     this.maxHealth = this.health;
     this.nitro = 100 * uNitroCap;
-    this._steerAngle = 0;
+    this._steerSpring.reset(0);
+    this._gear = 1;
+    this._shiftTimer = 0;
+    this._airSpinTimer = 0;
     const rx = 5 + (Math.random() - 0.5) * 20;
     const rz = 5 + (Math.random() - 0.5) * 20;
     const ry = getTerrainHeight(rx, rz) + 3;

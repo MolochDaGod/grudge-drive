@@ -10,6 +10,7 @@ import { AudioManager } from './game/AudioManager.js';
 import { characterManager, RACES } from './game/CharacterManager.js';
 import { CharacterCreation } from './ui/CharacterCreation.js';
 import { CarShop, shopState, COINS_PER_KILL, COINS_SURVIVAL_BONUS } from './ui/CarShop.js';
+import { CombatTargeting } from './game/CombatTargeting.js';
 
 // DOM refs
 const canvas = document.getElementById('renderCanvas');
@@ -22,7 +23,7 @@ const gameOverScreen = document.getElementById('gameOver');
 
 let engine, scene, havokInstance;
 let player, weapons, aiManager, hudCtrl, audio;
-let charCreation, carShop;
+let charCreation, carShop, combat;
 let gameState = 'loading'; // loading | menu | creating | shop | playing | dead
 let _survivalCoinTimer = 0;
 
@@ -109,6 +110,8 @@ async function init() {
   weapons = new WeaponsSystem(scene, player, audio);
   aiManager = new AIManager(scene, player, weapons, audio);
   await aiManager.spawnBots(5);
+
+  combat = new CombatTargeting(scene, player, aiManager);
   updateLoad(85, 'Checking identity...');
 
   // Character creation UI
@@ -143,6 +146,7 @@ async function init() {
       const dt = engine.getDeltaTime() / 1000;
       player.update(dt);
       weapons.update(dt);
+      combat.update(dt);
       aiManager.update(dt);
       hudCtrl.update();
       updateHudCoins();
@@ -219,6 +223,7 @@ function startGame() {
   applyShopUpgrades();
   player.reset();
   weapons.reset();
+  combat.reset();
   aiManager.reset();
   hudCtrl.reset();
   hudCtrl._loadDriverInfo();

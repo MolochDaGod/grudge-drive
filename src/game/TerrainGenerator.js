@@ -1,6 +1,6 @@
 import {
   MeshBuilder, StandardMaterial, Color3, Texture, Vector3,
-  VertexBuffer, PhysicsAggregate, PhysicsShapeType
+  VertexBuffer, VertexData, PhysicsAggregate, PhysicsShapeType
 } from '@babylonjs/core';
 
 /**
@@ -126,7 +126,7 @@ export function createTerrain(scene) {
 
   // Recompute normals for proper lighting
   const indices = ground.getIndices();
-  VertexBuffer.ComputeNormals(positions, indices, normals);
+  VertexData.ComputeNormals(positions, indices, normals);
   ground.updateVerticesData(VertexBuffer.NormalKind, normals);
 
   // Material — layered look using vertex color based on height

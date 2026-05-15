@@ -4,6 +4,7 @@ import {
   PhysicsShapeType, GlowLayer
 } from '@babylonjs/core';
 import { createTerrain, getTerrainHeight } from '../game/TerrainGenerator.js';
+import { createGrass } from '../game/GrassSystem.js';
 
 const ARENA_SIZE = 200;
 const WALL_HEIGHT = 14;  // taller to account for terrain peaks
@@ -152,6 +153,9 @@ export async function createArena(scene) {
     disc.material = pickupMat;
     disc.metadata = { type: 'pickup', index: i };
   });
+
+  // --- Grass ---
+  createGrass(scene);
 
   // --- Fog ---
   scene.fogMode = 4;
