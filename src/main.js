@@ -92,52 +92,27 @@ async function init() {
   updateLoad(10, 'Loading physics engine...');
   havokInstance = await HavokPhysics();
 
-  updateLoad(20, 'Initializing renderer...');
+  updateLoad(40, 'Initializing renderer...');
   engine = new Engine(canvas, true, { preserveDrawingBuffer: true, stencil: true });
   engine.setHardwareScalingLevel(1 / window.devicePixelRatio);
 
-  updateLoad(30, 'Building arena...');
+  // Create a minimal menu scene (just renders the canvas background)
   scene = new Scene(engine);
-  const havokPlugin = new HavokPlugin(true, havokInstance);
-  scene.enablePhysics(new Vector3(0, -9.81, 0), havokPlugin);
-  scene.collisionsEnabled = true;
   scene.clearColor.set(0.04, 0.04, 0.05, 1);
 
-  await createArena(scene);
-  updateLoad(50, 'Loading vehicles...');
+  updateLoad(60, 'Loading UI...');
 
-  audio = new AudioManager(scene);
-  player = new CarController(scene, audio);
-  await player.init();
-  updateLoad(70, 'Spawning opponents...');
-
-  weapons = new WeaponsSystem(scene, player, audio);
-  aiManager = new AIManager(scene, player, weapons, audio);
-  await aiManager.spawnBots(5);
-
-  combat = new CombatTargeting(scene, player, aiManager);
-  updateLoad(85, 'Checking identity...');
-
-  // UI overlays
+  // UI overlays (these don't need the game scene)
   charCreation = new CharacterCreation();
   carShop = new CarShop();
   gameFlowUI = new GameFlowUI();
 
-  // Try loading saved character + shop data from Puter KV
+  // Try loading saved character from Puter KV
   await characterManager.load();
   await shopState.load();
-  if (characterManager.hasCharacter) {
-    applyCharacterToGame();
-  }
-  // Apply shop upgrades to vehicle
-  applyShopUpgrades();
-
-  // HUD (reads character data in constructor)
-  hudCtrl = new HUDController(player, weapons);
-  aiManager.onBotKilled(() => hudCtrl.addKill());
 
   updateLoad(100, 'Ready!');
-  await new Promise(r => setTimeout(r, 500));
+  await new Promise(r => setTimeout(r, 400));
 
   // Transition to menu
   loadingScreen.classList.add('hidden');
@@ -145,18 +120,17 @@ async function init() {
   updateMenuForCharacter();
   gameState = 'menu';
 
-  // Render loop
+  // Render loop — always runs, game logic only when playing
   engine.runRenderLoop(() => {
-    if (gameState === 'playing') {
-      const dt = engine.getDeltaTime() / 1000;
+    if (gameState === 'playing' && player && weapons && aiManager) {
+      const dt = Math.min(engine.getDeltaTime() / 1000, 0.05);
       player.update(dt);
       weapons.update(dt);
-      combat.update(dt);
+      if (combat) combat.update(dt);
       aiManager.update(dt);
-      hudCtrl.update();
+      if (hudCtrl) hudCtrl.update();
       updateHudCoins();
 
-      // Survival coin bonus every 30s
       _survivalCoinTimer += dt;
       if (_survivalCoinTimer >= 30) {
         _survivalCoinTimer -= 30;
@@ -174,6 +148,50 @@ async function init() {
   window.addEventListener('resize', () => engine.resize());
 }
 
+/**
+ * Build the game scene fresh for a match.
+ * Called AFTER the lobby picks race/kart/mode/track.
+ */
+async function buildGameScene(trackId) {
+  // Dispose old game scene objects if any
+  if (scene) scene.dispose();
+
+  scene = new Scene(engine);
+  const havokPlugin = new HavokPlugin(true, havokInstance);
+  scene.enablePhysics(new Vector3(0, -9.81, 0), havokPlugin);
+  scene.collisionsEnabled = true;
+  scene.clearColor.set(0.04, 0.04, 0.05, 1);
+
+  // Build the arena/track
+  await createArena(scene);
+
+  // Audio
+  audio = new AudioManager(scene);
+
+  // Player car
+  player = new CarController(scene, audio);
+  await player.init();
+
+  // Weapons
+  weapons = new WeaponsSystem(scene, player, audio);
+
+  // AI bots
+  aiManager = new AIManager(scene, player, weapons, audio);
+  await aiManager.spawnBots(5);
+
+  // Combat targeting
+  try {
+    combat = new CombatTargeting(scene, player, aiManager);
+  } catch (_) { combat = null; }
+
+  // HUD
+  hudCtrl = new HUDController(player, weapons);
+  aiManager.onBotKilled(() => hudCtrl.addKill());
+
+  // Apply upgrades
+  applyShopUpgrades();
+}
+
 // --- Menu ---
 document.getElementById('btnPlay').addEventListener('click', async () => {
   // Allow playing without a character (quick play)
@@ -183,7 +201,6 @@ document.getElementById('btnPlay').addEventListener('click', async () => {
   // Show the full flow: race → kart → mode/track → launch
   const result = await gameFlowUI.show();
   if (!result) {
-    // Player cancelled — back to menu
     mainMenu.classList.remove('hidden');
     gameState = 'menu';
     return;
@@ -192,7 +209,15 @@ document.getElementById('btnPlay').addEventListener('click', async () => {
   _currentGameMode = result.mode;
   _currentTrackId = result.trackId;
 
-  // Apply selected race + kart to the player
+  // Build a fresh game scene for this match
+  mainMenu.classList.add('hidden');
+  loadingScreen.classList.remove('hidden');
+  updateLoad(20, 'Building track...');
+
+  await buildGameScene(result.trackId);
+  updateLoad(70, 'Loading kart...');
+
+  // Apply selected race + kart
   if (result.raceId) {
     await player.setCharacterColors(result.raceId, 'warrior');
   }
@@ -200,7 +225,11 @@ document.getElementById('btnPlay').addEventListener('click', async () => {
     await player.setKart(result.kartId);
   }
 
-  // Launch into the game
+  updateLoad(100, 'GO!');
+  await new Promise(r => setTimeout(r, 300));
+  loadingScreen.classList.add('hidden');
+
+  // Launch
   hud.classList.add('active');
   canvas.focus();
   startGame();
@@ -249,12 +278,14 @@ function startGame() {
   gameState = 'playing';
   _survivalCoinTimer = 0;
   applyShopUpgrades();
-  player.reset();
-  weapons.reset();
-  combat.reset();
-  aiManager.reset();
-  hudCtrl.reset();
-  hudCtrl._loadDriverInfo();
+  if (player) player.reset();
+  if (weapons) weapons.reset();
+  if (combat) combat.reset();
+  if (aiManager) aiManager.reset();
+  if (hudCtrl) {
+    hudCtrl.reset();
+    hudCtrl._loadDriverInfo();
+  }
   updateHudCoins();
   canvas.requestPointerLock?.();
 }
@@ -274,8 +305,16 @@ document.getElementById('btnRestart').addEventListener('click', () => {
   startGame();
 });
 
-document.getElementById('btnQuit').addEventListener('click', () => {
+document.getElementById('btnQuit').addEventListener('click', async () => {
   gameOverScreen.classList.remove('active');
+  hud.classList.remove('active');
+
+  // Dispose game scene and create a clean menu scene
+  if (scene) scene.dispose();
+  scene = new Scene(engine);
+  scene.clearColor.set(0.04, 0.04, 0.05, 1);
+  player = null; weapons = null; aiManager = null; combat = null; hudCtrl = null;
+
   mainMenu.classList.remove('hidden');
   updateMenuForCharacter();
   gameState = 'menu';
