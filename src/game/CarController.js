@@ -7,6 +7,8 @@ import { RACES, CLASSES } from './CharacterManager.js';
 import { getTerrainHeight } from './TerrainGenerator.js';
 import { SpringSimulator } from '../physics/SpringSimulator.js';
 import { loadDriver } from './DriverLoader.js';
+import { loadKart } from './KartLoader.js';
+import { getKartForRace, getKartById } from './KartRegistry.js';
 
 // ── Vehicle tuning (Sketchbook-inspired) ──
 const CAR = {
@@ -102,70 +104,18 @@ export class CarController {
 
     this.root = new TransformNode('playerCar', scene);
 
-    // ── Main body ──
-    this.body = MeshBuilder.CreateBox('carBody', { width: 2.4, height: 1.0, depth: 4.5 }, scene);
-    this.body.parent = this.root;
-    this.body.position.y = 0.8;
-    const bodyMat = new StandardMaterial('carBodyMat', scene);
-    bodyMat.diffuseColor = new Color3(0.8, 0.6, 0.1);
-    bodyMat.specularColor = new Color3(0.4, 0.3, 0.1);
-    bodyMat.emissiveColor = new Color3(0.15, 0.1, 0.02);
-    this.body.material = bodyMat;
+    // ── Load real kart GLB (default: Warkind signature kart) ──
+    const defaultKart = getKartForRace('wk');
+    await this._loadKartModel(defaultKart);
 
-    // ── Cabin ──
-    const cabin = MeshBuilder.CreateBox('cabin', { width: 2.0, height: 0.7, depth: 2.0 }, scene);
-    cabin.parent = this.root;
-    cabin.position.set(0, 1.55, -0.3);
-    const cabinMat = new StandardMaterial('cabinMat', scene);
-    cabinMat.diffuseColor = new Color3(0.15, 0.1, 0.2);
-    cabinMat.alpha = 0.7;
-    cabin.material = cabinMat;
-
-    // ── Wheels ──
-    const wheelMat = new StandardMaterial('wheelMat', scene);
-    wheelMat.diffuseColor = new Color3(0.15, 0.15, 0.15);
-
-    this.wheels = [];
-    WHEEL_OFFSETS.forEach((wp, i) => {
-      const wheel = MeshBuilder.CreateCylinder(`wheel${i}`, {
-        diameter: CAR.wheelRadius * 2, height: 0.4, tessellation: 16
-      }, scene);
-      wheel.rotation.z = Math.PI / 2;
-      wheel.position.copyFrom(wp);
-      wheel.parent = this.root;
-      wheel.material = wheelMat;
-      this.wheels.push(wheel);
-    });
-
-    // ── Exhausts ──
-    const exhaustMat = new StandardMaterial('exhaustMat', scene);
-    exhaustMat.emissiveColor = new Color3(0.5, 0.3, 0.0);
-    [-0.6, 0.6].forEach((x, i) => {
-      const ex = MeshBuilder.CreateCylinder(`exhaust${i}`, { diameter: 0.25, height: 0.6, tessellation: 8 }, scene);
-      ex.parent = this.root;
-      ex.position.set(x, 0.7, -2.4);
-      ex.rotation.x = Math.PI / 2;
-      ex.material = exhaustMat;
-    });
-
-    // ── Gun mount ──
-    const gunMount = MeshBuilder.CreateCylinder('gunMount', { diameter: 0.3, height: 1.2, tessellation: 8 }, scene);
-    gunMount.parent = this.root;
-    gunMount.position.set(0, 2.1, 0.5);
-    gunMount.rotation.x = Math.PI / 2;
-    const gunMat = new StandardMaterial('gunMat', scene);
-    gunMat.diffuseColor = new Color3(0.3, 0.3, 0.3);
-    gunMount.material = gunMat;
-    this.gunMount = gunMount;
-
-    // ── Invisible physics box ──
+    // ── Invisible physics box (drives the car) ──
     const physBox = MeshBuilder.CreateBox('carPhysics', { width: 2.4, height: 1.2, depth: 4.5 }, scene);
     physBox.position.y = 0.8;
     physBox.parent = this.root;
     physBox.isVisible = false;
 
-    // Spawn above the track (high enough to land on any surface)
-    this.root.position.set(0, 10, 0);
+    // Spawn just above ground level
+    this.root.position.set(0, 2, 0);
 
     this.physics = new PhysicsAggregate(this.root, PhysicsShapeType.BOX, {
       mass: CAR.mass,
@@ -193,37 +143,40 @@ export class CarController {
     this.root.metadata = { type: 'player' };
   }
 
-  // ─── Character colors + Grudge driver GLB ───────────────
+  // ─── Load a real kart GLB model ──────────────────────────
+  async _loadKartModel(kartDef) {
+    // Remove old kart mesh if any
+    if (this._kartNode) {
+      this._kartNode.getChildMeshes().forEach(m => m.dispose());
+      this._kartNode.dispose();
+      this._kartNode = null;
+    }
+    try {
+      const { root: kartRoot, meshes } = await loadKart(this.scene, kartDef, '_player');
+      kartRoot.parent = this.root;
+      kartRoot.position.y = 0.3;
+      this._kartNode = kartRoot;
+      // Keep original materials from the GLB (they look good as-is)
+      console.log(`[Car] Loaded kart: ${kartDef.kartName} (${meshes.length} meshes)`);
+    } catch (e) {
+      console.warn('[Car] Kart GLB failed, building fallback:', e);
+      // Minimal visible fallback so player can see something
+      this.body = MeshBuilder.CreateBox('carBody', { width: 2.4, height: 1.0, depth: 4.5 }, this.scene);
+      this.body.parent = this.root;
+      this.body.position.y = 0.8;
+      const mat = new StandardMaterial('carBodyMat', this.scene);
+      mat.diffuseColor = new Color3(0.8, 0.6, 0.1);
+      this.body.material = mat;
+    }
+  }
+
+  // ─── Switch kart + driver when race/class selected ──────────
   async setCharacterColors(raceId, classId) {
-    const race = RACES.find(r => r.id === raceId) || RACES[0];
-    const cls = CLASSES.find(c => c.id === classId) || CLASSES[0];
+    // Load the race's signature kart
+    const kartDef = getKartForRace(raceId);
+    await this._loadKartModel(kartDef);
 
-    // Paint kart body with race colors
-    if (this.body?.material) {
-      this.body.material.diffuseColor = new Color3(race.color.r, race.color.g, race.color.b);
-      this.body.material.emissiveColor = new Color3(race.emissive.r, race.emissive.g, race.emissive.b);
-      this.body.material.specularColor = new Color3(race.color.r * 0.5, race.color.g * 0.5, race.color.b * 0.5);
-    }
-
-    const exhaustMeshes = this.root?.getChildMeshes()?.filter(m => m.name.startsWith('exhaust'));
-    if (exhaustMeshes) {
-      exhaustMeshes.forEach(ex => {
-        if (ex.material) {
-          ex.material.emissiveColor = new Color3(cls.secondaryColor.r, cls.secondaryColor.g, cls.secondaryColor.b);
-        }
-      });
-    }
-
-    if (this.gunMount?.material) {
-      this.gunMount.material.diffuseColor = new Color3(
-        0.25 + cls.secondaryColor.r * 0.15,
-        0.25 + cls.secondaryColor.g * 0.15,
-        0.25 + cls.secondaryColor.b * 0.15
-      );
-    }
-
-    // Load the real Grudge race character as the driver
-    // Remove previous driver if any
+    // Load the Grudge race character as the driver
     if (this._driverNode) {
       this._driverNode.getChildMeshes().forEach(m => m.dispose());
       this._driverNode.dispose();
@@ -232,8 +185,14 @@ export class CarController {
     try {
       this._driverNode = await loadDriver(this.scene, raceId, this.root, '_player');
     } catch (e) {
-      console.warn('[CarController] Driver GLB load failed:', e);
+      console.warn('[Car] Driver GLB failed:', e);
     }
+  }
+
+  // ─── Switch to a specific kart by ID (from kart select) ────
+  async setKart(kartId) {
+    const kartDef = getKartById(kartId);
+    if (kartDef) await this._loadKartModel(kartDef);
   }
 
   // ─── Input ─────────────────────────────────────────────
@@ -476,7 +435,7 @@ export class CarController {
 
     // ── Fall recovery ──
     if (chassisPos.y < -15) {
-      this.root.position.set(0, 10, 0);
+      this.root.position.set(0, 2, 0);
       this.root.rotationQuaternion = Quaternion.Identity();
       body.setLinearVelocity(Vector3.Zero());
       body.setAngularVelocity(Vector3.Zero());
@@ -548,7 +507,7 @@ export class CarController {
     this._airSpinTimer = 0;
     const rx = (Math.random() - 0.5) * 20;
     const rz = (Math.random() - 0.5) * 20;
-    this.root.position.set(rx, 10, rz);
+    this.root.position.set(rx, 2, rz);
     this.root.rotationQuaternion = Quaternion.Identity();
     this.physics?.body?.setLinearVelocity(Vector3.Zero());
     this.physics?.body?.setAngularVelocity(Vector3.Zero());

@@ -196,6 +196,9 @@ document.getElementById('btnPlay').addEventListener('click', async () => {
   if (result.raceId) {
     await player.setCharacterColors(result.raceId, 'warrior');
   }
+  if (result.kartId) {
+    await player.setKart(result.kartId);
+  }
 
   // Launch into the game
   hud.classList.add('active');
