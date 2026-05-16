@@ -2,6 +2,7 @@ import { Engine, Scene, HavokPlugin, Vector3 } from '@babylonjs/core';
 import HavokPhysics from '@babylonjs/havok';
 import '@babylonjs/loaders/OBJ';
 import { createArena } from './scenes/ArenaScene.js';
+import { getTrackById } from './game/TrackRegistry.js';
 import { CarController } from './game/CarController.js';
 import { WeaponsSystem } from './game/WeaponsSystem.js';
 import { AIManager } from './game/AIManager.js';
@@ -162,8 +163,9 @@ async function buildGameScene(trackId) {
   scene.collisionsEnabled = true;
   scene.clearColor.set(0.04, 0.04, 0.05, 1);
 
-  // Build the arena/track
-  await createArena(scene);
+  // Build the arena/track using the selected track's GLB
+  const trackDef = getTrackById(trackId);
+  await createArena(scene, trackDef?.glbFile || null);
 
   // Audio
   audio = new AudioManager(scene);

@@ -8,7 +8,7 @@ import '@babylonjs/loaders/glTF';
 const ARENA_SIZE = 200;
 const WALL_HEIGHT = 14;  // taller to account for terrain peaks
 
-export async function createArena(scene) {
+export async function createArena(scene, trackGlbFile = 'race_track.glb') {
   // --- Lighting ---
   const hemi = new HemisphericLight('hemi', new Vector3(0, 1, 0), scene);
   hemi.intensity = 0.45;
@@ -37,10 +37,10 @@ export async function createArena(scene) {
   skybox.material = skyMat;
   skybox.infiniteDistance = true;
 
-  // --- Load the real race track GLB ---
+  // --- Load track GLB or build flat arena ---
   let trackGround = null;
-  try {
-    const result = await SceneLoader.ImportMeshAsync('', '/', 'race_track.glb', scene);
+  if (trackGlbFile) try {
+    const result = await SceneLoader.ImportMeshAsync('', '/', trackGlbFile, scene);
     const trackMeshes = result.meshes;
 
     // Add physics collision to every mesh in the track
