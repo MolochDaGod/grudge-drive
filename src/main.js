@@ -23,6 +23,16 @@ const mainMenu = document.getElementById('mainMenu');
 const hud = document.getElementById('hud');
 const gameOverScreen = document.getElementById('gameOver');
 
+/** Portal Super Engine embed (?embed=1 from grudge-studio.com/super-engine/grudge-drive) */
+const IS_EMBED = (() => {
+  try {
+    return new URLSearchParams(window.location.search).get('embed') === '1'
+      || window.self !== window.top;
+  } catch {
+    return true; // cross-origin iframe access denied → treat as embed
+  }
+})();
+
 let engine, scene, havokInstance;
 let player, weapons, aiManager, hudCtrl, audio;
 let charCreation, carShop, combat, gameFlowUI;
@@ -30,6 +40,11 @@ let gameState = 'loading'; // loading | menu | creating | shop | lobby | playing
 let _currentGameMode = 'battle';
 let _currentTrackId = 'grudge_arena';
 let _survivalCoinTimer = 0;
+
+if (IS_EMBED) {
+  document.documentElement.classList.add('grudge-embed');
+  document.body.classList.add('grudge-embed');
+}
 
 // --- Loading ---
 function updateLoad(pct, text) {

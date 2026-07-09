@@ -5,10 +5,14 @@
   "outputDirectory": "dist",
   "framework": "vite",
   "rewrites": [
-    { "source": "/api/auth/:path*", "destination": "https://id.grudge-studio.com/auth/:path*" },
-    { "source": "/api/characters/:path*", "destination": "https://api.grudge-studio.com/api/characters/:path*" },
+    { "source": "/api/auth/:path*", "destination": "https://id.grudge-studio.com/api/auth/:path*" },
+    { "source": "/auth/:path*", "destination": "https://id.grudge-studio.com/auth/:path*" },
+    { "source": "/login", "destination": "https://id.grudge-studio.com/login" },
+    { "source": "/api/characters/:path*", "destination": "https://grudge-api-production-0d46.up.railway.app/api/characters/:path*" },
+    { "source": "/api/account/:path*", "destination": "https://grudge-api-production-0d46.up.railway.app/api/account/:path*" },
     { "source": "/api/assets/:path*", "destination": "https://assets.grudge-studio.com/:path*" },
-    { "source": "/api/:path*", "destination": "https://api.grudge-studio.com/api/:path*" },
+    { "source": "/api/objectstore/v1/:path*", "destination": "https://objectstore.grudge-studio.com/api/v1/:path*" },
+    { "source": "/api/:path*", "destination": "https://grudge-api-production-0d46.up.railway.app/api/:path*" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "headers": [
@@ -16,7 +20,11 @@
       "source": "/(.*)",
       "headers": [
         { "key": "X-Content-Type-Options", "value": "nosniff" },
-        { "key": "X-Frame-Options", "value": "SAMEORIGIN" }
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+        {
+          "key": "Content-Security-Policy",
+          "value": "frame-ancestors 'self' https://grudge-studio.com https://*.grudge-studio.com https://grudgewarlords.com https://client.grudge-studio.com https://*.vercel.app; default-src 'self' blob: data:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.puter.com https://*.grudge-studio.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: wss:; media-src 'self' blob: https://assets.grudge-studio.com; worker-src 'self' blob:; frame-src 'self' https://*.grudge-studio.com https://*.puter.com"
+        }
       ]
     },
     {
