@@ -62,9 +62,9 @@ export class HUDController {
       this._speedValue.textContent = this.player.currentSpeed || 0;
     }
 
-    // Health (uses per-kart maxHealth from cfg)
+    // Health (per-kart maxHealth on CarController)
     if (this._healthFill) {
-      const maxHp = this.player.cfg?.maxHealth || 100;
+      const maxHp = this.player.maxHealth || 100;
       const pct = Math.max(0, (this.player.health / maxHp) * 100);
       this._healthFill.style.width = `${pct}%`;
     }
@@ -74,9 +74,9 @@ export class HUDController {
       this._nitroFill.style.width = `${this.player.nitro}%`;
     }
 
-    // Ammo
+    // Ammo (skip when weapons disabled for race modes)
     for (let i = 0; i < 3; i++) {
-      if (this._ammoEls[i]) {
+      if (this._ammoEls[i] && this.weapons?.getAmmo) {
         const ammo = this.weapons.getAmmo(i);
         this._ammoEls[i].textContent = ammo === Infinity ? '∞' : ammo;
       }

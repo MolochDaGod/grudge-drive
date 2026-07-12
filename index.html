@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>GRUDGE DRIVE - Vehicular Combat</title>
+  <title>GRUDGE DRIVE · Velocity — Drag Racing & Combat</title>
   <link href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@400;700;900&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
   <script src="https://js.puter.com/v2/"></script>
   <style>
@@ -21,15 +21,15 @@
     #loadingScreen.hidden { opacity: 0; pointer-events: none; }
     #loadingScreen h1 {
       font-family: 'Cinzel Decorative', serif;
-      font-size: 4rem; font-weight: 900; text-transform: uppercase;
+      font-size: 3.4rem; font-weight: 900; text-transform: uppercase;
       background: linear-gradient(135deg, #c9952a 0%, #f5d77a 40%, #c9952a 60%, #8b6914 100%);
       -webkit-background-clip: text; -webkit-text-fill-color: transparent;
       text-shadow: none; filter: drop-shadow(0 0 30px rgba(201,149,42,0.4));
-      letter-spacing: 0.15em;
+      letter-spacing: 0.12em;
     }
     #loadingScreen .subtitle {
-      font-family: 'Inter', sans-serif; font-size: 0.9rem; color: #666;
-      letter-spacing: 0.3em; text-transform: uppercase; margin-top: 8px;
+      font-family: 'Inter', sans-serif; font-size: 0.85rem; color: #8b6914;
+      letter-spacing: 0.35em; text-transform: uppercase; margin-top: 8px;
     }
     #loadingScreen .bar-container {
       width: 300px; height: 4px; background: #1a1a1f; border-radius: 2px;
@@ -373,7 +373,7 @@
   <!-- Loading Screen -->
   <div id="loadingScreen">
     <h1>GRUDGE DRIVE</h1>
-    <div class="subtitle">Vehicular Combat</div>
+    <div class="subtitle">Velocity Racing</div>
     <div class="bar-container"><div class="bar-fill" id="loadBar"></div></div>
     <div class="load-text" id="loadText">Initializing engine...</div>
   </div>
@@ -387,18 +387,19 @@
   <!-- Main Menu -->
   <div id="mainMenu" class="hidden">
     <h1>GRUDGE DRIVE</h1>
-    <div class="tagline">by Racalvin The Pirate King</div>
+    <div class="tagline">Velocity · PvP Drag · PvE Combat</div>
     <div id="menuCharInfo">
       <div id="menuCharPortrait"></div>
       <div class="char-name" id="menuCharName"></div>
       <div class="char-detail" id="menuCharDetail"></div>
     </div>
-    <button class="menu-btn" id="btnPlay">Enter Arena</button>
+    <button class="menu-btn" id="btnQuickDrag">🔥 Drag Race</button>
+    <button class="menu-btn" id="btnPlay">Play</button>
     <button class="menu-btn" id="btnShop">Vehicle Shop</button>
     <button class="menu-btn" id="btnCreate">Create Driver</button>
     <button class="menu-btn" id="btnChange" style="display:none">Change Driver</button>
     <button class="menu-btn" id="btnControls">Controls</button>
-    <div class="credit">GRUDGE STUDIO &mdash; <span>Racalvin The Pirate King</span></div>
+    <div class="credit">GRUDGE STUDIO &mdash; <span>drive.grudge-studio.com</span></div>
   </div>
 
   <!-- HUD -->
@@ -456,7 +457,7 @@
   <div id="gameOver">
     <h2>WRECKED</h2>
     <div class="stats" id="goStats"></div>
-    <button class="menu-btn" id="btnRestart">Fight Again</button>
+    <button class="menu-btn" id="btnRestart">Race Again</button>
     <button class="menu-btn" id="btnQuit">Main Menu</button>
   </div>
 

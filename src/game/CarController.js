@@ -5,8 +5,8 @@ import {
 import { RACES, CLASSES } from './CharacterManager.js';
 import { loadDriver } from './DriverLoader.js';
 import { loadKart } from './KartLoader.js';
-import { getKartForRace, getKartById } from './KartRegistry.js';
-import { TriggerVehicle } from '../physics/TriggerVehicle.js';
+import { getKartForRace, getKartById, statsToPhysics } from './KartRegistry.js';
+import { TriggerVehicle, DEFAULT_KART_CONFIG } from '../physics/TriggerVehicle.js';
 
 const MAX_HEALTH = 100;
 
@@ -19,6 +19,7 @@ export class CarController {
     this.nitro = 100;
     this.currentSpeed = 0;
     this.forwardSpeed = 0;
+    this.controlsLocked = false;
 
     this.keys = {};
     this.mouse = { x: 0, y: 0 };
@@ -26,38 +27,55 @@ export class CarController {
     this.root = null;
     this.camera = null;
     this.vehicle = null; // TriggerVehicle physics sim
+    this._kartDef = null;
 
     this._setupInput();
   }
 
   // ─── Init ───────────────────────────────────────────────
-  async init() {
+  async init(spawn = { x: 0, y: 1.2, z: 0 }) {
     const scene = this.scene;
 
     this.root = new TransformNode('playerCar', scene);
 
     // ── TriggerRally physics sim (replaces Havok rigid body) ──
     this.vehicle = new TriggerVehicle(scene);
-    this.vehicle.setPosition(0, 2, 0);
+    this.vehicle.setPosition(spawn.x ?? 0, spawn.y ?? 1.2, spawn.z ?? 0);
 
     // ── Load real kart GLB (default: Warkind signature kart) ──
     const defaultKart = getKartForRace('wk');
     await this._loadKartModel(defaultKart);
+    this.applyKartStats(defaultKart);
 
     // ── Camera ──
-    this.camera = new FollowCamera('followCam', new Vector3(0, 10, -15), scene);
+    this.camera = new FollowCamera('followCam', new Vector3(0, 8, -14), scene);
     this.camera.lockedTarget = this.root;
-    this.camera.radius = 12;
-    this.camera.heightOffset = 5;
+    this.camera.radius = 11;
+    this.camera.heightOffset = 4.5;
     this.camera.rotationOffset = 180;
-    this.camera.cameraAcceleration = 0.05;
-    this.camera.maxCameraSpeed = 30;
+    this.camera.cameraAcceleration = 0.08;
+    this.camera.maxCameraSpeed = 40;
     this.camera.lowerHeightOffsetLimit = 2;
-    this.camera.upperHeightOffsetLimit = 10;
+    this.camera.upperHeightOffsetLimit = 12;
     scene.activeCamera = this.camera;
     this.camera.attachControl(scene.getEngine().getRenderingCanvas(), true);
 
     this.root.metadata = { type: 'player' };
+  }
+
+  /** Map kart registry stats onto TriggerVehicle power/nitro/health. */
+  applyKartStats(kartDef) {
+    if (!kartDef || !this.vehicle) return;
+    this._kartDef = kartDef;
+    const p = statsToPhysics(kartDef.stats);
+    // Scale engine power: baseline 80 kW → 70–140 from accel/speed
+    const powerScale = 55 + (kartDef.stats.acceleration / 100) * 45 + (kartDef.stats.topSpeed / 100) * 40;
+    this.vehicle.enginePowerscale = powerScale * 1000;
+    this.vehicle.cfg.nitroMultiplier = 1.55 + (kartDef.stats.topSpeed / 100) * 0.55;
+    this.vehicle.cfg.nitroDrain = p.nitroDrain;
+    this.vehicle.cfg.nitroRegen = p.nitroRegen;
+    this.maxHealth = Math.round(p.maxHealth);
+    this.health = this.maxHealth;
   }
 
   // ─── Load a real kart GLB model ──────────────────────────
@@ -109,13 +127,22 @@ export class CarController {
   // ─── Switch to a specific kart by ID (from kart select) ────
   async setKart(kartId) {
     const kartDef = getKartById(kartId);
-    if (kartDef) await this._loadKartModel(kartDef);
+    if (kartDef) {
+      await this._loadKartModel(kartDef);
+      this.applyKartStats(kartDef);
+    }
   }
 
   // ─── Input ─────────────────────────────────────────────
   _setupInput() {
     const canvas = document.getElementById('renderCanvas');
-    window.addEventListener('keydown', (e) => { this.keys[e.code] = true; });
+    window.addEventListener('keydown', (e) => {
+      this.keys[e.code] = true;
+      // Prevent page scroll on game keys
+      if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) {
+        e.preventDefault();
+      }
+    });
     window.addEventListener('keyup', (e) => { this.keys[e.code] = false; });
     canvas.addEventListener('mousemove', (e) => {
       this.mouse.x += e.movementX * 0.002;
@@ -137,17 +164,25 @@ export class CarController {
     if (!this.vehicle) return;
     dt = Math.min(dt, 0.05);
 
-    // Map keyboard input to TriggerVehicle input
     const v = this.vehicle;
-    v.input.throttle = (this.keys['KeyW'] || this.keys['ArrowUp']) ? 1 : 0;
-    v.input.brake = (this.keys['KeyS'] || this.keys['ArrowDown']) ? 1 : 0;
-    v.input.handbrake = this.keys['Space'] ? 1 : 0;
-    v.input.nitro = !!this.keys['KeyE'];
+    if (this.controlsLocked) {
+      v.input.throttle = 0;
+      v.input.brake = 1;
+      v.input.handbrake = 1;
+      v.input.nitro = false;
+      v.input.turn = 0;
+    } else {
+      v.input.throttle = (this.keys['KeyW'] || this.keys['ArrowUp']) ? 1 : 0;
+      v.input.brake = (this.keys['KeyS'] || this.keys['ArrowDown']) ? 1 : 0;
+      v.input.handbrake = this.keys['Space'] ? 1 : 0;
+      // SHIFT or E for nitro (controls text matches both)
+      v.input.nitro = !!(this.keys['ShiftLeft'] || this.keys['ShiftRight'] || this.keys['KeyE']);
 
-    let turn = 0;
-    if (this.keys['KeyA'] || this.keys['ArrowLeft']) turn = 1;
-    if (this.keys['KeyD'] || this.keys['ArrowRight']) turn = -1;
-    v.input.turn = turn;
+      let turn = 0;
+      if (this.keys['KeyA'] || this.keys['ArrowLeft']) turn = 1;
+      if (this.keys['KeyD'] || this.keys['ArrowRight']) turn = -1;
+      v.input.turn = turn;
+    }
 
     // Run physics substeps (fixed ~120Hz for stability)
     const substep = 1 / 120;
@@ -167,10 +202,15 @@ export class CarController {
     this.forwardSpeed = v.forwardSpeed;
     this.nitro = v.nitro;
 
-    // Fall recovery
-    if (v.pos.y < -20) {
-      v.setPosition(0, 2, 0);
+    // Fall recovery — soft reset above ground
+    if (v.pos.y < -15) {
+      v.setPosition(this._spawn?.x ?? 0, this._spawn?.y ?? 1.5, this._spawn?.z ?? 0);
     }
+  }
+
+  setSpawn(x, y, z) {
+    this._spawn = { x, y, z };
+    if (this.vehicle) this.vehicle.setPosition(x, y, z);
   }
 
   // ─── Shop upgrade application ──────────────────────
@@ -197,14 +237,21 @@ export class CarController {
     this.health = Math.max(0, this.health - amount * (1 - resist));
   }
 
-  reset() {
-    this.health = MAX_HEALTH;
-    this.maxHealth = MAX_HEALTH;
+  reset(opts = {}) {
+    this.controlsLocked = false;
+    this.health = this.maxHealth || MAX_HEALTH;
     this.nitro = 100;
     if (this.vehicle) {
-      const rx = (Math.random() - 0.5) * 20;
-      const rz = (Math.random() - 0.5) * 20;
-      this.vehicle.setPosition(rx, 2, rz);
+      this.vehicle.nitro = 100;
+      if (opts.useSpawn && this._spawn) {
+        this.vehicle.setPosition(this._spawn.x, this._spawn.y, this._spawn.z);
+      } else if (opts.x != null) {
+        this.vehicle.setPosition(opts.x, opts.y ?? 1.2, opts.z ?? 0);
+      } else if (this._spawn) {
+        this.vehicle.setPosition(this._spawn.x, this._spawn.y, this._spawn.z);
+      } else {
+        this.vehicle.setPosition(0, 1.2, 0);
+      }
     }
   }
 }
