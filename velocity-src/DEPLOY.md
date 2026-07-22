@@ -1,11 +1,11 @@
-# Velocity / Drive — clean production deploy
+# Velocity / Drive — production deploy SSOT
 
-## SSOT topology (one front, one room — no duplicates)
+## Topology
 
 ```
 Browser
-  drive.grudge-studio.com     ──307──►  grudge-velocity.pages.dev   (CF Pages SPA ONLY)
-  grudge-drive.vercel.app     ──307──►  same Pages SPA
+  drive.grudge-studio.com     ──REWRITE (same origin)──►  grudge-velocity.pages.dev
+  grudge-drive.vercel.app     ──rewrite──►  same Pages SPA
         │
         │  wss://grudox.grudge-studio.com/api/drive
         ▼
@@ -14,162 +14,98 @@ Browser
         ▼
   Railway voxgrudge-grudox-room-production
         └── /api/drive  →  drive-room.js  (houston-velocity)
-        └── /api/carrier, /api/space, /api/grudox  (siblings, same process)
 ```
 
-| Role | Canonical | Do **not** use in production |
-|------|-----------|------------------------------|
-| **SPA** | `grudge-velocity.pages.dev` | Babylon grudge-drive shell, second Vercel game build |
-| **Entry DNS** | `drive.grudge-studio.com` → 307 → Pages | Pointing players at raw Railway or `api-server` |
-| **Login return** | `https://drive.grudge-studio.com/?play=1&from=id` | Raw `pages.dev` as `returnTo` only (gateway may drop bare returnTo) |
-| **WS URL** | `wss://grudox.grudge-studio.com/api/drive` | Hardcoded Railway `wss://…railway.app` from client |
-| **Room process** | `voxgrudge/server` on Railway | `artifacts/drive-world-server`, monorepo `attachDriveServer` (local/dev only) |
-| **Assets** | `assets.grudge-studio.com/games/velocity/*` | Shipping large GLBs only on Pages |
+| Role | Canonical | Do **not** use |
+|------|-----------|----------------|
+| **SPA** | `grudge-velocity.pages.dev` (Three.js cruise) | Babylon `src/` shell as product |
+| **Entry** | `drive.grudge-studio.com` **rewrite** → Pages | 307 assets to pages.dev (CORS) |
+| **Login return** | `https://drive.grudge-studio.com/?play=1&from=id` | bare pages.dev returnTo only |
+| **WS** | `wss://grudox.grudge-studio.com/api/drive` | raw Railway wss from client |
+| **Cars** | CDN `models/vehicles/*.glb` | procedural box cars in production |
+| **Drivers** | Account **voxel** heroes | grudge6 modular Warlords kits |
+| **Map** | `la-gangwar.glb` + BVH colliders | stale uncached GLB after rebake |
 
-### Auth return (must stay green)
+## Auth
 
 ```
 Sign in → id.grudge-studio.com/login
   ?redirect_uri=https://drive.grudge-studio.com/?play=1&from=id
-  &returnTo=… (dual-write) &app=velocity
      │
      ▼
-drive.grudge-studio.com/?play=1&from=id&grudge_token=…
-     │ 307 (query preserved, incl. tokens)
+drive.grudge-studio.com/?play=1&from=id&sso_token=…
+     │ Vercel rewrite (origin stays drive.*)
      ▼
-grudge-velocity.pages.dev/?play=1&from=id&grudge_token=…
-     │ captureTokenFromUrl → localStorage
-     ▼
-garage / auto-play
+Pages SPA: captureTokenFromUrl → garage → cruise
 ```
 
-Code SSOT: `fleetAuth.velocityLoginUrl` + `fleetConfig.velocityReturnUrl` (never use `window.location.origin` on pages.dev for production return).
+## CORS trap (fixed)
 
-**Smoke (must stay green):**
+**Never** 307 `/assets/*` to `pages.dev` while HTML stays on `drive.*`.  
+ES modules then load cross-origin without ACAO → console CORS flood.
+
+Ship thin Vercel **rewrites** (proxy), **no** local Babylon `index.html`.
+
+## MIME trap (fixed)
+
+SPA catch-all must not return HTML for missing hashed `.js`.  
+`functions/_middleware.js` converts that to **404 text/plain**.
+
+## Product: cars / cabin / drivers
+
+| Item | Rule |
+|------|------|
+| Starters | Datsun 240Z, NSX-V, Supra A80 (CDN voxel) |
+| Cabin | Seat from car dims; `seatScale` ~0.58; hide legs while seated |
+| Drivers | `loadFleetDriverOptions` prefers era=voxel/open; filters grudge6 |
+| Map | `LA_GANGWAR_MAP_VERSION` query busts cache after rebake |
+
+Sources: `velocity-src/racer/*` (snapshot), monorepo `artifacts/arcade/src/games/racer/*` when building.
+
+## Deploy SPA (Pages)
 
 ```bash
-node artifacts/arcade/scripts/smoke-drive-pvp.mjs
-```
-
-```
-drive.grudge-studio.com          → 307 → grudge-velocity.pages.dev
-grudge-velocity.pages.dev        → CF Pages production SPA (Houston Cruise)
-assets.grudge-studio.com/*       → R2 grudge-assets (CDN Worker)
-api.grudge-studio.com/assets     → D1 grudge-assets-db registry
-games/velocity/manifest.json    → fleet library SSOT on CDN
-```
-
-**Optional DNS (recommended):**  
-Cloudflare Pages custom domain `velocity.grudge-studio.com` → project `grudge-velocity`  
-(Dashboard: Pages → grudge-velocity → Custom domains → Add `velocity.grudge-studio.com`)
-
-## Asset library (R2 + D1)
-
-| Layer | What |
-|-------|------|
-| **R2** `grudge-assets` | `models/vehicles/*.glb`, `models/environment/*`, `media/velocity/*`, `games/velocity/manifest.json` |
-| **D1** `grudge-assets-db` | `asset_registry` rows for velocity keys |
-| **Code** | `velocityLibrary.ts` resolves `cdnUrl` / catalog `assetId` |
-
-### Bake / re-upload
-
-```bash
-cd C:\Users\nugye\vfc-build
-node artifacts/arcade/scripts/upload-velocity-library-to-r2.mjs
-# optional: apply SQL
-cd F:\GitHub\GrudgeBuilder
-npx wrangler d1 execute grudge-assets-db --remote --file=C:/Users/nugye/vfc-build/artifacts/arcade/dist/velocity-cdn/games/velocity/seed-d1-velocity.sql
-```
-
-### Verify
-
-```bash
-curl -sI https://assets.grudge-studio.com/games/velocity/manifest.json
-curl -sI https://assets.grudge-studio.com/models/vehicles/minecraft-car.glb
-curl -sI https://assets.grudge-studio.com/media/velocity/drive-grudge.mp4
-```
-
-Magic-byte: GLB starts `glTF`, MP4 has `ftyp` at offset 4 — never accept HTML.
-
-## SPA deploy (CF Pages) — live browser game
-
-Pages has **no Node**. Live stack:
-
-| Need | Origin |
-|------|--------|
-| SPA | `grudge-velocity.pages.dev` |
-| REST characters/account | `_redirects` 200 → Railway `grudge-api-production-0d46` |
-| Auth | `_redirects` → `id.grudge-studio.com` |
-| Baked map + cars | `assets.grudge-studio.com` (R2) |
-| Multiplayer | `wss://grudox.grudge-studio.com/api/drive` |
-
-```bash
-# one-shot build + package + deploy (includes API proxies + map + UI)
-node artifacts/arcade/scripts/deploy-velocity-pages.mjs
-```
-
-Manual:
-```bash
+# monorepo path (preferred build host)
 cd artifacts/arcade
-$env:BASE_PATH="/"
-node ./node_modules/vite/bin/vite.js build --config vite.cruise.config.ts
-# package must copy public/_redirects (REST proxy) + models + ui
+BASE_PATH=/ node ./node_modules/vite/bin/vite.js build --config vite.cruise.config.ts
+# package → dist/velocity-pages, strip >24MB, _redirects/_headers, functions/
 npx wrangler pages deploy dist/velocity-pages --project-name=grudge-velocity --branch=main
 ```
 
-Boot screen probes: CDN manifest, map GLB magic, REST `/api/health`, drive room.
+Or: `node scripts/deploy-velocity-pages.mjs`
 
-## Reference video
+## Deploy drive proxy (Vercel)
 
-Local SSOT: `C:\Users\nugye\Videos\drive grudge.mp4`  
-CDN: `https://assets.grudge-studio.com/media/velocity/drive-grudge.mp4`  
-Poster: `.../drive-grudge-poster.jpg`  
-Used as intro splash in `CruiseOnlyLauncher`.
-
-## Multiplayer PvP (grudoxinfo L2 + L3)
-
-Same as Carrier — **no separate socket box**.
-
+```bash
+cd _drive_proxy_out
+npx vercel deploy --prod --yes --scope grudgenexus
+# project grudge-drive → alias drive.grudge-studio.com
 ```
-Browser (Pages / drive.grudge-studio.com)
-  → wss://grudox.grudge-studio.com/api/drive   (CF Worker L3)
-    → Railway voxgrudge-grudox-room /api/drive   (L2 co-located room)
+
+## Assets (R2)
+
+```bash
+curl -sI https://assets.grudge-studio.com/games/velocity/manifest.json
+curl -sI https://assets.grudge-studio.com/models/vehicles/datsun-240z.glb
+curl -sI "https://assets.grudge-studio.com/models/environment/velocity/la-gangwar.glb"
 ```
+
+Magic-byte: GLB starts `glTF`. Never accept HTML.
+
+## Multiplayer
 
 | Piece | Path |
 |-------|------|
-| Room | `F:\GitHub\voxgrudge\server\drive-room.js` |
-| Edge allowlist | `grudge-studio/infra/cloudflare/grudox/worker.ts` → `LIVE_GAME_API_PREFIXES` includes `drive` |
+| Room | voxgrudge `server/drive-room.js` |
+| Edge | grudox Worker `LIVE_GAME_API_PREFIXES` includes `drive` |
 | Client | `driveNetClient.ts` → `FLEET_DRIVE_WS` |
 
-### Deploy room + edge
+## Smoke
 
 ```bash
-# Railway room (from voxgrudge/server)
-cd F:\GitHub\voxgrudge\server
-# railway up  OR push if GitHub→Railway linked
-
-# CF Worker
-cd C:\Users\nugye\Documents\grudge-studio\infra\cloudflare\grudox
-npx wrangler deploy
+curl -sI https://drive.grudge-studio.com/
+# 200, title Velocity — LA Streets 3D
+curl -sI https://drive.grudge-studio.com/assets/cruise-CEDk4XaI.js
+# application/javascript (hash changes per deploy)
+# Missing Babylon hashes → 404 text/plain (not HTML)
 ```
-
-### Smoke
-
-```bash
-curl -s https://voxgrudge-grudox-room-production.up.railway.app/api/health
-# expect paths.drive
-curl -s https://grudox.grudge-studio.com/api/drive
-# expect room houston-velocity
-```
-
-Opt-out in client: `?mp=0`. Override: `?driveWs=wss://…`
-
-## Do not
-
-- Ship Babylon grudge-drive as product  
-- Put large GLBs only on Pages (use R2)  
-- Invent model paths without registry/manifest  
-- Leave Meshy/capsule as final cars when CDN GLBs exist  
-- Hardcode WS host outside `FLEET_DRIVE_WS` / same-origin helper  
-- Expect Pages alone to upgrade WebSockets (must go through GRUDOX Worker)  
