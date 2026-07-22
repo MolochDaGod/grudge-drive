@@ -3,8 +3,8 @@
   "alias": ["drive.grudge-studio.com"],
   "redirects": [
     {
-      "source": "/(.*)",
-      "destination": "https://grudge-velocity.pages.dev/?open=1",
+      "source": "/:path*",
+      "destination": "https://grudge-velocity.pages.dev/:path*",
       "permanent": false
     }
   ]
