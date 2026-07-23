@@ -1,0 +1,17 @@
+# Production on drive.grudge-studio.com is a REWRITE PROXY only.
+# Never upload Babylon SPA, node_modules, or local dist to this project.
+src
+public
+dist
+node_modules
+.git
+.github
+velocity-src
+proxy-deploy
+_drive_proxy_out
+*.md
+package-lock.json
+vite.config.js
+index.html
+.env
+.env.*

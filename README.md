@@ -5,18 +5,30 @@
 | Surface | URL |
 |---------|-----|
 | **Play** | https://drive.grudge-studio.com/?play=1 |
-| **Pages SPA** | https://grudge-velocity.pages.dev/ |
+| **Pages SPA (SSOT)** | https://grudge-velocity.pages.dev/ |
 | **WS room** | `wss://grudox.grudge-studio.com/api/drive` |
 | **CDN** | https://assets.grudge-studio.com/games/velocity/ |
 
 ## Product rules (do not regress)
 
-1. **SPA = Three.js Houston Cruise** (not Babylon `src/` shell).
-2. **`drive.grudge-studio.com`** is a **same-origin reverse proxy** (Vercel rewrites → Pages). Never 307 `/assets/*` to another origin while serving HTML from drive (CORS module failure).
-3. **Cars** load from **CDN voxel GLBs** (`models/vehicles/*`) — not procedural box cars.
-4. **Drivers** are **account voxel heroes** (Open Dressing Room / era=voxel). Not grudge6 modular Warlords kits.
-5. **Seating** is GTA-style cabin: hips in car, legs hidden, scale ~0.58 so heads do not clip the roof.
-6. **Map** = LA Gangwar shell + BVH colliders (`la-gangwar.glb?v=…` cache-bust after rebake).
+1. **SPA = Three.js Houston Cruise only** (`CruiseOnlyLauncher` / `cruise-*.js`).
+2. **`drive.grudge-studio.com`** = **rewrite proxy → Pages**. Never deploy Babylon `dist/` to the Vercel `grudge-drive` project.
+3. **Purge list (not production):** Babylon `src/` lab, procedural box cars as primary, grudge6 modular drivers, dual 307 asset hops.
+4. **Cars** = CDN voxel GLBs (`models/vehicles/*`).
+5. **Drivers** = account **voxel** heroes (not grudge6 Warlords kits).
+6. **Cabin** = GTA-style seat (dims-based, legs hidden).
+7. **Map** = LA Gangwar + colliders.
+
+### Deploy production entry (proxy)
+
+```bash
+npm run deploy:proxy
+# or: node scripts/deploy-drive-proxy.mjs
+```
+
+Requires `VERCEL_TOKEN` + linked project `grudge-drive` → alias `drive.grudge-studio.com`.
+
+**Lab Babylon only:** `npm run dev:lab` / `build:lab` — never `vercel --prod` from repo root with `dist/` present.
 
 ## Repo layout
 

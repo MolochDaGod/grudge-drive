@@ -1,12 +1,16 @@
 {
   "name": "grudge-drive",
-  "version": "1.0.0",
-  "description": "Grudge Drive - Vehicular Combat by Grudge Studio",
+  "version": "2.0.0",
+  "description": "Velocity production entry: drive.grudge-studio.com rewrites to grudge-velocity Pages (Three.js cruise). Babylon src/ is lab-only.",
   "type": "module",
+  "private": true,
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "dev:lab": "vite",
+    "build:lab": "vite build",
+    "preview:lab": "vite preview",
+    "build": "node -e \"console.log('No SPA build: production is CF Pages cruise. Use npm run deploy:proxy');\"",
+    "deploy:proxy": "node scripts/deploy-drive-proxy.mjs",
+    "deploy:pages": "node -e \"console.error('Build cruise in monorepo artifacts/arcade then wrangler pages deploy. See velocity-src/DEPLOY.md'); process.exit(1)\""
   },
   "dependencies": {
     "@babylonjs/core": "^7.54.3",
