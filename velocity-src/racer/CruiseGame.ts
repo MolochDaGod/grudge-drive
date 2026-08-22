@@ -672,7 +672,11 @@ export class CruiseGame {
       this.playerRoot = anim.root;
       this.playerRoot.userData.colKind = "character";
       this.scene.add(anim.root);
-      this.forceSeatInCar();
+      if (this.cfg.spawnOnFoot) {
+        this.finishExitInstant();
+      } else {
+        this.forceSeatInCar();
+      }
       this.camYaw = this.heading;
       this.debugLabel = `clips enter=${!!this.vehicleClips.enter} exit=${!!this.vehicleClips.exit}`;
       console.info("[cruise] voxel driver ready", this.debugLabel);

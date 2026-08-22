@@ -5,6 +5,19 @@
  * or called absolute when same-origin proxy is missing.
  */
 
+/**
+ * Fleet JWT keys — write all on login, read any (Open primary first).
+ * Must match gameopen `PROD_AUTH_TOKEN_KEYS` / production-wiring.
+ */
+export const FLEET_AUTH_TOKEN_KEYS = [
+  "grudge.open.token",
+  "grudge_auth_token",
+  "grudge_session_token",
+  "grudge.token",
+  "sso_token",
+  "grudge_token",
+] as const;
+
 export const FLEET = {
   /** Characters / account / wallet (Railway Postgres SSOT) */
   gameData: "https://grudge-api-production-0d46.up.railway.app",
@@ -68,15 +81,28 @@ export function isStaticHost(hostname = typeof window !== "undefined" ? window.l
 }
 
 /**
+ * True when this host already reverse-proxies `/api/*` → Railway (JSON).
+ * drive.grudge-studio.com is a Vercel rewrite proxy — same-origin /api is SSOT.
+ * pages.dev SPA catch-all still serves HTML for /api, so that host must use Railway absolute.
+ */
+export function usesSameOriginApi(
+  hostname = typeof window !== "undefined" ? window.location.hostname : "",
+): boolean {
+  if (isLocalDevHost(hostname)) return true;
+  return hostname === "drive.grudge-studio.com" || hostname === "velocity.grudge-studio.com";
+}
+
+/**
  * Resolve REST path for fleet APIs.
- * Prefer absolute Railway URL on static hosts so we never parse SPA HTML as JSON
- * when `_redirects` proxy is missing or delayed.
+ * Same-origin on drive.* (Vercel rewrites). Absolute Railway only on Pages
+ * where `/api/characters` currently 200s HTML.
  */
 export function fleetApiUrl(path: string): string {
   const p = path.startsWith("/") ? path : `/${path}`;
   if (typeof window === "undefined") return p;
-  if (isStaticHost(window.location.hostname)) {
-    // Auth stays on id host
+  const host = window.location.hostname;
+  if (usesSameOriginApi(host)) return p;
+  if (isStaticHost(host)) {
     if (p.startsWith("/api/auth") || p.startsWith("/auth") || p === "/login") {
       return `${FLEET.id}${p.startsWith("/api") ? p : `/api${p}`}`;
     }
@@ -172,23 +198,32 @@ export async function probeVelocityLiveLoad(
 
   push(
     await timed("rest-characters", async () => {
-      const url = fleetApiUrl("/api/characters?era=warlords&limit=4");
-      const headers: Record<string, string> = { Accept: "application/json" };
+      // Do not GET /api/characters without a session — Railway requireAuth is 401
+      // and the browser logs it as a failed request (cruise 401 flood).
+      let token: string | null = null;
       try {
-        const token =
-          localStorage.getItem("grudge_auth_token") ||
-          localStorage.getItem("grudge_session_token");
-        if (token) {
-          headers.Authorization = `Bearer ${token}`;
-          headers["X-Session-Token"] = token;
+        for (const k of FLEET_AUTH_TOKEN_KEYS) {
+          const v = sessionStorage.getItem(k) || localStorage.getItem(k);
+          if (v && v.length > 16) {
+            token = v;
+            break;
+          }
         }
       } catch {
         /* ignore */
       }
-      const r = await fetch(url, { credentials: "include", headers });
-      // 401 without session is fine for guest play
-      if (r.status === 401 || r.status === 403) {
+      if (!token) {
         return { ok: true, detail: "guest (login for Foundry 4-slot)" };
+      }
+      const url = fleetApiUrl("/api/characters?era=voxel&limit=4");
+      const headers: Record<string, string> = {
+        Accept: "application/json",
+        Authorization: `Bearer ${token}`,
+        "X-Session-Token": token,
+      };
+      const r = await fetch(url, { credentials: "include", headers });
+      if (r.status === 401 || r.status === 403) {
+        return { ok: true, detail: "session expired — login again" };
       }
       if (!r.ok) return { ok: false, detail: `HTTP ${r.status}` };
       const ct = r.headers.get("content-type") || "";

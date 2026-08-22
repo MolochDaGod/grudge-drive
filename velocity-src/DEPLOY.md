@@ -33,11 +33,17 @@ Sign in → id.grudge-studio.com/login
   ?redirect_uri=https://drive.grudge-studio.com/?play=1&from=id
      │
      ▼
-drive.grudge-studio.com/?play=1&from=id&sso_token=…
+drive.grudge-studio.com/?play=1&from=id&sso_token=…  (+ optional grudge_token launch)
      │ Vercel rewrite (origin stays drive.*)
      ▼
-Pages SPA: captureTokenFromUrl → garage → cruise
+Pages SPA: ensureFleetSession
+  prefer sso_token (365d session) over grudge_token (60m launch)
+  dual-write grudge.open.token + fleet keys
+  same-origin GET /api/characters?era=voxel
+  first 401 → clear stale JWT, stop (do not retry era=open/nexus/…)
 ```
+
+Roster is Railway `requireAuth`. Sending an expired launch JWT 401s. Never GET `/api/characters` as guest.
 
 ## CORS trap (fixed)
 

@@ -128,6 +128,8 @@ export interface CruiseConfig {
   driverLook?: import("./lookTypes").CharacterLook;
   multiplayerUrl?: string | null;
   characterId?: string | null;
+  /** Dice-win flow: spawn on sidewalk next to the heap, walk in with E. */
+  spawnOnFoot?: boolean;
 }
 
 export function emptyCruiseHud(partial?: Partial<CruiseHudState>): CruiseHudState {

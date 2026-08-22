@@ -8,8 +8,8 @@
 
 import type { CharacterLook } from "./lookTypes";
 import { CHARACTERS, type CharacterDef } from "./characters";
-import { fleetApiUrl } from "./fleetConfig";
-import { authHeaders, getActiveCharacterId, getSessionToken } from "./fleetAuth";
+import { fleetApiUrl } from "../fleetConfig";
+import { authHeaders, clearSession, getActiveCharacterId, getSessionToken } from "../fleetAuth";
 
 export interface FleetDriverOption {
   /** Use as garage driverId (fleet:uuid or crest id). */
@@ -182,36 +182,46 @@ function mapCharacters(list: RawChar[], allowGrudge6 = false): FleetDriverOption
     });
 }
 
-async function fetchCharacters(path: string, headers: Record<string, string>): Promise<RawChar[]> {
+type CharFetch =
+  | { ok: true; list: RawChar[] }
+  | { ok: false; unauthorized: true }
+  | { ok: false; unauthorized: false };
+
+async function fetchCharacters(path: string, headers: Record<string, string>): Promise<CharFetch> {
   const res = await fetch(fleetApiUrl(path), {
     credentials: "include",
     headers,
   });
   if (res.status === 401 || res.status === 403) {
-    console.info("[fleet] characters require login", path, res.status);
-    return [];
+    return { ok: false, unauthorized: true };
   }
-  if (!res.ok) return [];
+  if (!res.ok) return { ok: false, unauthorized: false };
   const ct = res.headers.get("content-type") || "";
   if (ct.includes("text/html")) {
     console.warn("[fleet] /api/characters returned HTML — REST proxy missing");
-    return [];
+    return { ok: false, unauthorized: false };
   }
   const data = (await res.json()) as {
     characters?: RawChar[];
     data?: RawChar[];
     roster?: RawChar[];
   };
-  if (Array.isArray(data.characters)) return data.characters;
-  if (Array.isArray(data.data)) return data.data;
-  if (Array.isArray(data.roster)) return data.roster;
-  if (Array.isArray(data)) return data as RawChar[];
-  return [];
+  const list = Array.isArray(data.characters)
+    ? data.characters
+    : Array.isArray(data.data)
+      ? data.data
+      : Array.isArray(data.roster)
+        ? data.roster
+        : Array.isArray(data)
+          ? (data as RawChar[])
+          : [];
+  return { ok: true, list };
 }
 
 /**
  * Load up to 4 **voxel** account heroes for Velocity.
- * Prefer era=voxel / open; never treat warlords grudge6 as default drivers.
+ * Prefer era=voxel / nexus; never treat warlords grudge6 as default drivers.
+ * Auth failure is account-level — do not retry every era (that 401-spammed cruise).
  */
 export async function loadFleetDriverOptions(
   token?: string | null,
@@ -223,32 +233,24 @@ export async function loadFleetDriverOptions(
     headers.Authorization = `Bearer ${t}`;
     headers["X-Session-Token"] = t;
 
-    // 1) Explicit voxel / open eras first
-    for (const era of ["voxel", "open", "nexus"]) {
-      const list = await fetchCharacters(`/api/characters?era=${era}&limit=8`, headers);
-      const mapped = mapCharacters(list, false);
-      if (mapped.length) {
-        console.info("[fleet] voxel drivers from era", era, mapped.length);
-        return mapped;
-      }
-    }
+    const paths = [
+      "/api/characters?era=voxel&limit=8",
+      "/api/characters?era=nexus&limit=8",
+      "/api/characters?limit=12",
+      "/api/characters?era=warlords&limit=8",
+    ];
 
-    // 2) Unscoped list — filter OUT grudge6 modular
-    {
-      const list = await fetchCharacters("/api/characters?limit=12", headers);
-      const mapped = mapCharacters(list, false);
-      if (mapped.length) {
-        console.info("[fleet] voxel drivers from unscoped (filtered grudge6)", mapped.length);
-        return mapped;
+    for (const path of paths) {
+      const result = await fetchCharacters(path, headers);
+      if (!result.ok && result.unauthorized) {
+        console.info("[fleet] characters 401 — clear stale JWT, guest garage");
+        clearSession();
+        return [];
       }
-    }
-
-    // 3) warlords era only as last resort IF non-grudge6 look data present
-    {
-      const list = await fetchCharacters("/api/characters?era=warlords&limit=8", headers);
-      const mapped = mapCharacters(list, false);
+      if (!result.ok) continue;
+      const mapped = mapCharacters(result.list, false);
       if (mapped.length) {
-        console.info("[fleet] non-g6 from warlords era", mapped.length);
+        console.info("[fleet] voxel drivers from", path, mapped.length);
         return mapped;
       }
     }

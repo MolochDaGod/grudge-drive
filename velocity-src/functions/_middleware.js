@@ -13,6 +13,9 @@
 const STATIC_EXT =
   /\.(js|mjs|cjs|css|map|wasm|json|glb|gltf|bin|png|jpe?g|webp|gif|svg|ico|woff2?|ttf|otf|mp3|wav|ogg|mp4|webm)$/i;
 
+/** Prefer session JWT; drop expired launch leftovers before cruise GET /api/characters. */
+const AUTH_BOOT = `(function(){var K=["grudge.open.token","grudge_auth_token","grudge_session_token","grudge.token","sso_token","grudge_token"];function d(t){try{var p=t.split(".")[1];if(!p)return null;return JSON.parse(atob(p.replace(/-/g,"+").replace(/_/g,"/")))}catch(e){return null}}function exp(p){return !!(p&&p.exp&&Date.now()/1000>=p.exp-60)}var s=[],l=[];function c(t){if(!t||t.length<20)return;var p=d(t);if(!p||exp(p))return;if(p.type==="launch"){if(!l.length)l.push(t);return}if(!s.length)s.push(t)}try{for(var i=0;i<K.length;i++){c(sessionStorage.getItem(K[i]));c(localStorage.getItem(K[i]))}}catch(e){return}var ch=s[0]||l[0]||null;try{if(!ch){for(var j=0;j<K.length;j++){localStorage.removeItem(K[j]);sessionStorage.removeItem(K[j])}return}for(var k=0;k<K.length;k++){localStorage.setItem(K[k],ch);sessionStorage.setItem(K[k],ch)}}catch(e){}})();`;
+
 export async function onRequest(context) {
   const url = new URL(context.request.url);
   const res = await context.next();
@@ -73,7 +76,15 @@ export async function onRequest(context) {
     headers.set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
     headers.set("Pragma", "no-cache");
     headers.set("CDN-Cache-Control", "no-store");
-    return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
+    let html = await res.text();
+    if (!html.includes("id=\"velocity-auth-boot\"")) {
+      html = html.replace(
+        /<script type="module"/,
+        `<script id="velocity-auth-boot">${AUTH_BOOT}</script>\n    <script type="module"`,
+      );
+    }
+    headers.set("content-type", "text/html; charset=utf-8");
+    return new Response(html, { status: res.status, statusText: res.statusText, headers });
   }
 
   // Hashed assets + anything else that survived the static-ext check

@@ -35,8 +35,8 @@ import {
 } from "./velocityLibrary";
 import { probeVelocityLiveLoad, FLEET, type LoadProbe } from "./fleetConfig";
 import {
-  captureTokenFromUrl,
   clearSession,
+  ensureFleetSession,
   foundryCreateUrl,
   foundryHeroesUrl,
   getSessionToken,
@@ -81,7 +81,7 @@ export function CruiseOnlyLauncher() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      captureTokenFromUrl();
+      await ensureFleetSession();
       const urlId = readUrlCharacterId();
       const urlName = readUrlCharacterName();
       const qs = new URLSearchParams(window.location.search);

@@ -1,9 +1,8 @@
 /**
- * Velocity production shell — Three.js open world + Grudge ID / Foundry 4-slot.
+ * Velocity production shell — street campaign on LA Gangwar.
  *
- * Flow:
- *  boot → capture token → load 4 heroes → garage (login + slots)
- *  → START immediately mounts CruiseGame (WebGL scene + LA map)
+ * Flow: avatar → dice cinema → 3 junk cars → walk/enter → cousin phone →
+ * GPS shop → Midnight Tune interior → open-world jobs → cousin race.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CruiseGame } from "./CruiseGame";
@@ -12,13 +11,26 @@ import { emptyCruiseHud, type CruiseConfig, type CruiseHudState } from "./cruise
 import { resolveDriveWsUrl } from "./driveNetClient";
 import { CARS, STARTER_CARS, getCar } from "./cars";
 import { CHARACTERS, getCharacter } from "./characters";
-import { getPaint } from "./garage";
+import { getPaint, tuneLevels } from "./garage";
 import {
   defaultGarage,
   loadGarage,
   saveGarage,
   type GarageState,
 } from "./garageStateLocal";
+import {
+  COUSIN_POI,
+  PLAYER_REFUSE,
+  SHOP_POI,
+  canRaceCousin,
+  gpsDist,
+  junkStarters,
+  type CampaignBeat,
+} from "./campaign";
+import { DiceCinema } from "./DiceCinema";
+import { StreetPhone } from "./StreetPhone";
+import { ShopInterior } from "./ShopInterior";
+import { GpsChrome } from "./GpsChrome";
 import {
   crestDriverOptions,
   loadFleetDriverOptions,
@@ -33,10 +45,10 @@ import {
   loadVelocityManifest,
   vehicleUrl,
 } from "./velocityLibrary";
-import { probeVelocityLiveLoad, FLEET, type LoadProbe } from "./fleetConfig";
+import { probeVelocityLiveLoad, FLEET, type LoadProbe } from "../fleetConfig";
 import {
-  captureTokenFromUrl,
   clearSession,
+  ensureFleetSession,
   foundryCreateUrl,
   foundryHeroesUrl,
   getSessionToken,
@@ -44,9 +56,10 @@ import {
   probeAuthAccount,
   setActiveCharacterId,
   velocityLoginUrl,
-} from "./fleetAuth";
+} from "../fleetAuth";
 
-type Phase = "boot" | "intro" | "garage" | "cruise";
+type Phase = "boot" | "intro" | "avatar" | "dice" | "car_pick" | "garage" | "cruise" | "shop";
+type PhoneApp = "home" | "cousin" | "jobs" | "gps";
 
 const btn = (active: boolean, accent = "#22d3ee"): React.CSSProperties => ({
   borderRadius: 8,
@@ -76,12 +89,15 @@ export function CruiseOnlyLauncher() {
   const [authOk, setAuthOk] = useState(false);
   const [worldError, setWorldError] = useState<string | null>(null);
   const [autoPlayArmed, setAutoPlayArmed] = useState(false);
+  const [phoneOpen, setPhoneOpen] = useState(false);
+  const [phoneApp, setPhoneApp] = useState<PhoneApp>("home");
+  const [monologue, setMonologue] = useState<string | null>(null);
 
   // ── Boot: token → stack probe → roster → garage / auto-play ─────────
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      captureTokenFromUrl();
+      await ensureFleetSession();
       const urlId = readUrlCharacterId();
       const urlName = readUrlCharacterName();
       const qs = new URLSearchParams(window.location.search);
@@ -176,13 +192,15 @@ export function CruiseOnlyLauncher() {
         qs.get("skipIntro") === "1" ||
         sessionStorage.getItem("velocity_intro_seen") === "1";
 
-      if (wantAuto) {
+      const beat = (loadGarage() ?? defaultGarage()).campaignBeat;
+      const deep = beat === "open_world" || beat === "cousin_ready" || beat === "mission1_done";
+      if (wantAuto && deep) {
         setAutoPlayArmed(true);
         setPhase("garage");
-      } else if (skipIntro) {
+      } else if (skipIntro && deep) {
         setPhase("garage");
       } else {
-        setPhase("intro");
+        setPhase("avatar");
       }
     })();
     return () => {
@@ -208,7 +226,7 @@ export function CruiseOnlyLauncher() {
     [garage.driverId],
   );
 
-  const startCruise = useCallback(() => {
+  const startCruise = useCallback((carIdOverride?: string) => {
     const el = containerRef.current;
     if (!el) {
       setWorldError("Scene container missing — hard refresh the page.");
@@ -226,6 +244,9 @@ export function CruiseOnlyLauncher() {
         gameRef.current?.dispose();
         gameRef.current = null;
 
+        const carDef =
+          getCar(typeof carIdOverride === "string" ? carIdOverride : garage.carId) ??
+          car;
         const resolved = resolveDriverLook(garage.driverId, fleetDrivers);
         const paint = getPaint(garage.paintId)?.color;
         // Prefer fleet voxel heroes; crest only for guests
@@ -235,17 +256,21 @@ export function CruiseOnlyLauncher() {
           fleetOnly[0]?.look ??
           driver?.look;
         const cfg: CruiseConfig = {
-          carName: car.name,
-          carId: car.id,
-          carAssetId: car.assetId,
+          carName: carDef.name,
+          carId: carDef.id,
+          carAssetId: carDef.assetId,
           paintColor: paint,
           driverName: garage.driverName || resolved.name || driver?.name || "Driver",
-          carAccent: paint || resolved.accent || car.accent || "#9dff00",
+          carAccent: paint || resolved.accent || carDef.accent || "#9dff00",
           characterId: garage.driverId.startsWith("fleet:")
             ? garage.driverId.slice(6)
             : fleetOnly[0]?.characterId || null,
           driverLook,
           multiplayerUrl: resolveDriveWsUrl(),
+          spawnOnFoot:
+            typeof carIdOverride === "string" ||
+            garage.campaignBeat === "walk_to_car" ||
+            garage.campaignBeat === "avatar",
         };
 
         const game = new CruiseGame(el, setHud, cfg);
@@ -262,7 +287,7 @@ export function CruiseOnlyLauncher() {
         const msg = e instanceof Error ? e.message : String(e);
         console.error("[velocity] CruiseGame start failed", e);
         setWorldError(msg);
-        setPhase("garage");
+        setPhase("car_pick");
         startedRef.current = false;
       }
     });
@@ -277,6 +302,35 @@ export function CruiseOnlyLauncher() {
       return () => clearTimeout(t);
     }
   }, [phase, autoPlayArmed, startCruise]);
+
+  useEffect(() => {
+    if (phase !== "cruise") return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code === "ArrowUp" || e.code === "KeyP") {
+        e.preventDefault();
+        setPhoneOpen((v) => !v);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [phase]);
+
+  useEffect(() => {
+    if (phase !== "cruise") return;
+    if (garage.campaignBeat === "walk_to_car" && hud.phase === "driving") {
+      patchBeat("cousin_call");
+      setPhoneOpen(true);
+      setPhoneApp("cousin");
+    }
+    if (
+      garage.campaignBeat === "go_shop" &&
+      hud.phase === "driving" &&
+      gpsDist(hud.playerX, hud.playerZ, SHOP_POI.x, SHOP_POI.z) < 14
+    ) {
+      patchBeat("in_shop", { shopVisited: true });
+      setPhase("shop");
+    }
+  }, [phase, hud.phase, hud.playerX, hud.playerZ, garage.campaignBeat]);
 
   useEffect(
     () => () => {
@@ -302,6 +356,29 @@ export function CruiseOnlyLauncher() {
       saveGarage(next);
       return next;
     });
+  };
+
+  const patchBeat = (beat: CampaignBeat, extra?: Partial<GarageState>) => {
+    setGarage((g) => {
+      const next = { ...g, campaignBeat: beat, ...extra };
+      saveGarage(next);
+      return next;
+    });
+  };
+
+  const chooseJunkCar = (id: string) => {
+    setGarage((g) => {
+      const next: GarageState = {
+        ...g,
+        carId: id,
+        tuning: { topSpeed: 0, accel: 0, grip: 0 },
+        mods: [],
+        campaignBeat: "walk_to_car",
+      };
+      saveGarage(next);
+      return next;
+    });
+    startCruise(id);
   };
 
   const backGarage = () => {
@@ -461,6 +538,107 @@ export function CruiseOnlyLauncher() {
           >
             Skip · Enter garage
           </button>
+        </div>
+      )}
+
+      {phase === "avatar" && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            zIndex: 22,
+            padding: 28,
+            background: "linear-gradient(180deg,#0a1020,#05080f)",
+            overflow: "auto",
+          }}
+        >
+          <div style={{ fontSize: 12, letterSpacing: "0.3em", color: "#22d3ee" }}>YOUR FACE ON THE BLOCK</div>
+          <h1 style={{ fontSize: 28, fontWeight: 900 }}>Pick the avatar. Then we roll dice.</h1>
+          <p style={{ opacity: 0.6, marginBottom: 16 }}>
+            Roster heroes are street NPCs too — everyone you made can show up on the curb.
+          </p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 16 }}>
+            {slots.map((slot, i) =>
+              slot ? (
+                <button
+                  key={slot.id}
+                  type="button"
+                  style={btn(garage.driverId === slot.id, slot.accent)}
+                  onClick={() => pickDriver(slot.id, slot.name)}
+                >
+                  <div style={{ fontWeight: 700 }}>{slot.name}</div>
+                  <div style={{ fontSize: 11, opacity: 0.7 }}>{slot.perkLabel}</div>
+                </button>
+              ) : (
+                <button key={`e-${i}`} type="button" style={btn(false)} onClick={goCreate}>
+                  Slot {i + 1} empty
+                </button>
+              ),
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              patchBeat("dice");
+              setPhase("dice");
+            }}
+            style={{
+              border: "none",
+              background: "linear-gradient(90deg,#06b6d4,#a3e635)",
+              color: "#000",
+              fontWeight: 900,
+              padding: "14px 28px",
+              borderRadius: 12,
+              fontSize: 16,
+            }}
+          >
+            Alley · dice
+          </button>
+        </div>
+      )}
+
+      {phase === "dice" && (
+        <DiceCinema
+          onDone={() => {
+            patchBeat("car_pick");
+            setPhase("car_pick");
+          }}
+        />
+      )}
+
+      {phase === "car_pick" && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            zIndex: 22,
+            padding: 28,
+            background: "#080a10",
+            overflow: "auto",
+          }}
+        >
+          <div style={{ fontSize: 12, color: "#ff5a36", letterSpacing: "0.25em" }}>STOCK · 0 TUNE</div>
+          <h1 style={{ fontSize: 26, fontWeight: 900 }}>Three heaps. All junk. Pick one.</h1>
+          <p style={{ opacity: 0.65, maxWidth: 480 }}>
+            Dice prize — no upgrades. Walk to it, get in, then the phone rings.
+          </p>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 20 }}>
+            {junkStarters().map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => chooseJunkCar(c.id)}
+                style={{
+                  ...btn(garage.carId === c.id, c.accent),
+                  minWidth: 180,
+                  minHeight: 88,
+                }}
+              >
+                <div style={{ fontWeight: 800 }}>{c.name}</div>
+                <div style={{ fontSize: 11, opacity: 0.7 }}>{c.klass} · 0/5 tune</div>
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
@@ -652,7 +830,94 @@ export function CruiseOnlyLauncher() {
       )}
 
       {phase === "cruise" && (
-        <CruiseHud state={hud} game={gameRef.current} onGarage={backGarage} onExit={backGarage} />
+        <>
+          <CruiseHud state={hud} game={gameRef.current} onGarage={backGarage} onExit={backGarage} />
+          <GpsChrome
+            playerX={hud.playerX}
+            playerZ={hud.playerZ}
+            playerYaw={hud.playerYaw}
+            target={
+              garage.campaignBeat === "go_shop"
+                ? SHOP_POI
+                : garage.campaignBeat === "cousin_ready" || garage.campaignBeat === "cousin_race"
+                  ? COUSIN_POI
+                  : null
+            }
+          />
+          <StreetPhone
+            open={phoneOpen || garage.campaignBeat === "cousin_call"}
+            app={phoneApp}
+            beat={garage.campaignBeat}
+            onApp={setPhoneApp}
+            onClose={() => setPhoneOpen(false)}
+            onHangCousin={() => {
+              setPhoneOpen(false);
+              setMonologue(PLAYER_REFUSE);
+              patchBeat("go_shop");
+            }}
+            onGotoShop={() => {
+              setPhoneOpen(false);
+              patchBeat("go_shop");
+            }}
+            onGotoCousin={() => {
+              setPhoneOpen(false);
+              patchBeat("cousin_ready");
+            }}
+          />
+          {monologue && (
+            <div
+              style={{
+                position: "absolute",
+                left: "50%",
+                bottom: 90,
+                transform: "translateX(-50%)",
+                zIndex: 36,
+                maxWidth: 520,
+                background: "rgba(0,0,0,0.78)",
+                border: "1px solid rgba(255,255,255,0.2)",
+                padding: "14px 18px",
+                borderRadius: 8,
+                fontWeight: 700,
+              }}
+            >
+              {monologue}
+              <button
+                type="button"
+                onClick={() => setMonologue(null)}
+                style={{
+                  display: "block",
+                  marginTop: 10,
+                  background: "#a3e635",
+                  border: "none",
+                  padding: "6px 12px",
+                  fontWeight: 800,
+                  borderRadius: 6,
+                }}
+              >
+                GPS the shop
+              </button>
+            </div>
+          )}
+        </>
+      )}
+
+      {phase === "shop" && (
+        <ShopInterior
+          garage={garage}
+          onChange={(next) => {
+            saveGarage(next);
+            setGarage(next);
+          }}
+          onLeave={() => {
+            const ready = canRaceCousin({
+              shopVisited: true,
+              currency: garage.currency,
+              tuneLevels: tuneLevels(garage.tuning),
+            });
+            patchBeat(ready ? "cousin_ready" : "open_world", { shopVisited: true });
+            setPhase("cruise");
+          }}
+        />
       )}
     </div>
   );
